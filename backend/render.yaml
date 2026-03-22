@@ -4,7 +4,8 @@ services:
     runtime: python
     pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
-    startCommand: python standalone_server.py
+    startCommand: python3 standalone_server.py
+    healthCheckPath: /api/system/license
     envVars:
       - key: HOST
         value: '0.0.0.0'
@@ -17,3 +18,4 @@ services:
         value: tiny
       - key: APP_ANTHROPIC_API_KEY
         sync: false
+
