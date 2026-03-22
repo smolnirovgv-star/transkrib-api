@@ -6,8 +6,9 @@ faster-whisper
 anthropic==0.39.0
 yt-dlp>=2024.10.22
 ffmpeg-python
-pydantic==2.9.0
-pydantic-settings==2.5.0
+pydantic==2.9.2
+pydantic-settings==2.5.2
 python-dotenv==1.0.1
 aiofiles==24.1.0
 supabase
+pydantic-core==2.23.4
