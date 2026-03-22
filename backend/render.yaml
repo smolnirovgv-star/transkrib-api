@@ -2,6 +2,7 @@ services:
   - type: web
     name: transkrib-api
     runtime: python
+    pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
     startCommand: python standalone_server.py
     envVars:
