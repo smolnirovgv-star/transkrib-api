@@ -98,6 +98,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import results, system, export as export_router, preview as preview_router, transcript as transcript_router
+from app.routers.payments import router as payments_router
 from app.workers.memory_progress import InMemoryProgressReporter
 from app.workers.standalone_tasks import (
     init_progress,
@@ -289,6 +290,7 @@ app.include_router(create_ws_router(ws_manager))
 app.include_router(export_router.router)
 app.include_router(preview_router.router)
 app.include_router(transcript_router.router)
+app.include_router(payments_router)
 
 # License management endpoints
 from fastapi import HTTPException
