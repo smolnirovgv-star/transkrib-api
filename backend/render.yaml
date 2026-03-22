@@ -9,13 +9,7 @@ services:
     envVars:
       - key: HOST
         value: '0.0.0.0'
-      - key: PORT
-        fromService:
-          type: web
-          name: transkrib-api
-          property: port
       - key: APP_WHISPER_MODEL
         value: tiny
       - key: APP_ANTHROPIC_API_KEY
         sync: false
-
