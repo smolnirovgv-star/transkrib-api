@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: transkrib-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python standalone_server.py
+    envVars:
+      - key: HOST
+        value: '0.0.0.0'
+      - key: APP_WHISPER_MODEL
+        value: tiny
+      - key: APP_ANTHROPIC_API_KEY
+        sync: false
