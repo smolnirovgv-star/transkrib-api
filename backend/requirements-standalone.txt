@@ -1,0 +1,33 @@
+# Standalone backend dependencies (без Redis/Celery)
+# Для PyInstaller сборки desktop приложения
+
+# FastAPI + Uvicorn
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# Async & WebSocket
+websockets==13.1
+aiofiles==24.1.0
+
+# AI/ML — Video processing
+openai-whisper
+anthropic>=0.39.0
+yt-dlp>=2024.10.22
+
+# Configuration & Models
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+python-dotenv==1.0.1
+
+# Исключаем (НЕ нужны для standalone):
+# celery
+# redis
+# kombu
+# billiard
+# amqp
+# vine
+
+# Image generation (icon + Stability AI preview)
+pillow>=10.0.0
+requests>=2.31.0
