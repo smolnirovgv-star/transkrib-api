@@ -1,0 +1,35 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО BackendStartup.tsx. Всё остальное оставить без изменений.
+
+СРОЧНЫЙ БАГ — BackendStartup не пропускается в dev режиме
+
+Файл: platforms/desktop_windows/src/renderer/components/BackendStartup.tsx
+
+Прочитай файл и найди логику пропуска dev режима.
+Проверь что эти условия реально работают:
+
+const isDev = 
+  new URLSearchParams(window.location.search).get('dev') === 'true' ||
+  localStorage.getItem('transkrib_dev_mode') === 'true' ||
+  !window.electronAPI
+
+Если isDev === true — компонент должен сразу вызвать onReady() и вернуть null.
+
+Исправь так чтобы это работало гарантированно:
+
+import { useEffect } from 'react'
+
+const isDev = 
+  new URLSearchParams(window.location.search).get('dev') === 'true' ||
+  localStorage.getItem('transkrib_dev_mode') === 'true' ||
+  typeof window.electronAPI === 'undefined'
+
+if (isDev) {
+  // Немедленный вызов через useEffect
+  useEffect(() => { onReady() }, [])
+  return null
+}
+
+ВАЖНО: Не использовать backticks (`).
+Не менять другие файлы.
+Отчёт только по изменённым строкам.

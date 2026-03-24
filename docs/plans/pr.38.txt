@@ -1,0 +1,32 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО pipeline.py. Всё остальное не трогать.
+
+СРОЧНЫЙ БАГ — "same file" ошибка при обработке
+
+Ошибка: 'file.mp4' and 'file.mp4' are the same file
+
+Файл: backend/app/pipeline.py
+
+Проблема: shutil.copy2() вызывается с одинаковым src и dst.
+Это происходит когда yt-dlp скачивает файл сразу
+в папку processing — и потом код пытается скопировать его туда же.
+
+Исправь — добавь проверку перед каждым shutil.copy2():
+
+import os
+
+# Перед копированием всегда проверять:
+src = os.path.abspath(src_path)
+dst = os.path.abspath(dst_path)
+if src != dst:
+    shutil.copy2(src, dst)
+else:
+    pass  # файл уже на месте
+
+Найди все места в pipeline.py где используется shutil.copy2()
+и добавь эту проверку в каждое место.
+
+Ограничения:
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+- Не менять другие файлы
+- Отчёт только по изменённым строкам

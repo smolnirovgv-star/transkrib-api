@@ -1,0 +1,17 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА — Добавить DEV режим для обхода SetupWizard
+
+В файле platforms/desktop_windows/src/renderer/App.tsx найди
+логику проверки лицензии/trial и добавь условие:
+
+Если в URL есть параметр ?dev=true ИЛИ
+если в localStorage есть ключ 'transkrib_dev_mode=true —
+то сразу показывать главный экран, минуя SetupWizard.
+
+Также добавь в браузер-режиме (без Electron) кнопку
+[DEV: Пропустить setup] на экране SetupWizard —
+видимую только в режиме npm run dev.
+
+После изменений покажи как активировать dev режим.

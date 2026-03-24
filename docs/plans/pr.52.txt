@@ -1,0 +1,26 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО transcript.py. Всё остальное не трогать.
+
+СРОЧНЫЙ БАГ — SRT скачивание: 
+'latin-1' codec can't encode characters in position 37-45
+
+Файл: backend/app/routers/transcript.py
+
+Ошибка возникает в Content-Disposition заголовке.
+Несмотря на RFC 5987 исправление — где-то ещё 
+используется latin-1 кодировка для имени файла.
+
+Найди все места где формируется Content-Disposition.
+Убедись что везде используется:
+
+from urllib.parse import quote
+safe_name = quote(filename.encode('utf-8'))
+headers = {
+    'Content-Disposition': 'attachment; filename*=UTF-8\'\'' + safe_name
+}
+
+Также проверь что сам контент SRT файла 
+записывается с encoding='utf-8'.
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

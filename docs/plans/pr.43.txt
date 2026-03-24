@@ -1,0 +1,70 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ЗАДАЧА — 3 финальных исправления + сборка
+
+═══════════════════════════════════════════
+БАГ 1 — Dropdown транскрипта не открывается
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Найди кнопку Транскрипт и её onClick обработчик.
+Добавь e.stopPropagation() чтобы клик не закрывал dropdown сразу.
+Убедись что состояние showTranscriptMenu переключается корректно.
+Добавь inline стиль на dropdown контейнер:
+style={{ position: 'absolute', right: 0, left: 'auto', minWidth: '220px', zIndex: 1000 }}
+
+═══════════════════════════════════════════
+БАГ 2 — Transcript endpoint 405 на HEAD
+═══════════════════════════════════════════
+
+Файл: backend/app/routers/transcript.py
+
+Найди endpoint /download и добавь поддержку HEAD:
+Замени @router.get на @router.api_route(methods=['GET', 'HEAD'])
+
+═══════════════════════════════════════════
+БАГ 3 — Скачивание файлов в браузере
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Функция скачивания транскрипта в браузерном режиме:
+const handleTranscriptDownload = (format) => {
+  const url = 'http://127.0.0.1:8000/api/transcript/'
+    + encodeURIComponent(filename) + '/download?format=' + format
+  if (window.electronAPI && window.electronAPI.saveTranscript) {
+    window.electronAPI.saveTranscript({ filename, format })
+  } else {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename.replace('.mp4', '') + '.' + format
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+}
+
+═══════════════════════════════════════════
+СБОРКА — После исправлений
+═══════════════════════════════════════════
+
+1. Проверь TypeScript без ошибок:
+   cd platforms/desktop_windows && npx tsc --noEmit
+   Исправь все ошибки.
+
+2. Запусти полную сборку:
+   cd C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI
+   build_all.bat
+
+3. После сборки отчитайся:
+   - Файлы в release/ с размерами
+   - Ошибки TypeScript если были
+   - Ошибки PyInstaller если были
+   - Ошибки electron-builder если были
+
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/

@@ -1,0 +1,22 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА 1 — Скопируй файл политики возврата в docs/:
+Скопируй файл:
+  C:\Users\Admin\Downloads\REFUND_POLICY_RU.md
+в папку:
+  docs\REFUND_POLICY_RU.md
+
+ЗАДАЧА 2 — Удали дубликат:
+В папке docs\ есть лишний файл EULA_RU_1.md — удали его.
+Оставь только EULA_RU.md и EULA_RU.txt
+
+ЗАДАЧА 3 — Проверь итог:
+Выведи список всех файлов в папке docs\
+Должно быть:
+  EULA_RU.md
+  EULA_RU.txt
+  PRIVACY_POLICY_RU.md
+  PRIVACY_POLICY_RU.txt
+  REFUND_POLICY_RU.md
+  USER_GUIDE_RU.md

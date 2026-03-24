@@ -1,0 +1,26 @@
+Контекст: Transkrib SmartCut AI
+
+СРОЧНЫЙ БАГ — ошибка компиляции в ProcessingProgress.tsx
+
+Ошибка: "JSX attributes must only be assigned a non-empty expression"
+Файл: src/renderer/components/ProcessingProgress.tsx
+Строка 64: <div className={}>
+
+Строка 64 содержит пустое выражение className={}.
+Исправь — замени на правильное значение:
+```tsx
+// Было (ошибка):
+<div className={}>
+
+// Должно быть:
+<div className="proc-stage-icon">
+```
+
+Также проверь строку 66:
+{done ? <Check size={16} /> : <Icon size={16} />}
+
+Убедись что:
+- Icon импортирован из lucide-react
+- Или замени Icon на нужную иконку (например Clock или Loader)
+
+После исправления проверь npm run dev — ошибок быть не должно.

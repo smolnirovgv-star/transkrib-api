@@ -1,0 +1,33 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО то что указано. Всё остальное оставить без изменений.
+
+СРОЧНЫЙ БАГ — ResultGallery пустая после восстановления задачи
+
+После F5 страница показывает "✅ Завершено" но 
+ResultGallery пустая — нет видео, нет транскрипта, нет кнопок.
+
+Файл: src/renderer/App.tsx
+
+Проблема: при восстановлении completed задачи передаётся
+только taskId но не передаётся result_filename в ResultGallery.
+
+Исправить useEffect восстановления:
+1. Найти задачу с state === 'completed'
+2. Сохранить ВСЕ данные задачи: task_id, result_filename, step_details
+3. Передать result_filename в ResultGallery компонент
+
+Проверь как ResultGallery принимает данные:
+- Какой prop используется для имени файла результата?
+- Убедись что этот prop заполняется из completed.result_filename
+
+Также проверь файл: src/renderer/components/ResultGallery.tsx
+- Как компонент получает filename/result?
+- Добавь console.log чтобы видеть что приходит
+
+Ограничения:
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+- TypeScript строгий  
+- Не менять другие компоненты кроме App.tsx
+- Не использовать backticks (`) — только одинарные кавычки
+
+Отчёт только по изменённым строкам.

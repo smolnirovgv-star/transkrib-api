@@ -1,0 +1,5 @@
+Покажи содержимое файла:
+platforms/desktop_windows/electron/preload.ts
+
+Особенно функцию getResultPath — 
+как она формирует путь к видеофайлу?

@@ -1,0 +1,201 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+## ЗАДАЧА — Установщик: EULA + Политика конфиденциальности
+
+### Сначала прочитай эти файлы:
+- build/installer.nsh
+- electron-builder.yml
+- platforms/desktop_windows/electron-builder.yml
+- docs/                         ← покажи список всех файлов в папке
+- platforms/desktop_windows/build/
+
+═══════════════════════════════════════════
+### ШАГ 1 — Проверка и замена документов
+═══════════════════════════════════════════
+
+В папке docs/ найди все файлы политики конфиденциальности и EULA.
+Покажи список найденных файлов с их размерами.
+
+Нам нужно чтобы в docs/ находились ИМЕННО эти два файла:
+- docs/PRIVACY_POLICY_RU.md  ← политика конфиденциальности
+- docs/EULA_RU.md             ← лицензионное соглашение
+
+Если Claude Code ранее создал другие версии этих файлов —
+покажи их содержимое (первые 20 строк каждого).
+
+Затем скопируй наши версии документов из вложений этого сообщения
+в папку docs/ проекта, заменив все существующие версии.
+
+Проверь что файлы скопированы корректно (размер, первые строки).
+
+═══════════════════════════════════════════
+### ШАГ 2 — Конвертация MD в TXT для NSIS
+═══════════════════════════════════════════
+
+NSIS установщик не читает Markdown — нужны чистые текстовые файлы.
+
+Создай два файла:
+- build/license.txt        ← из docs/EULA_RU.md (убрать # и ** и *)
+- build/privacy.txt        ← из docs/PRIVACY_POLICY_RU.md (убрать # и ** и *)
+
+Конвертация: убрать все markdown символы:
+  ## Заголовок  →  ЗАГОЛОВОК
+  **жирный**    →  жирный
+  *курсив*      →  курсив
+  | таблица |   →  оставить как есть (ASCII таблицы читаемы)
+  ---           →  ══════════════════
+
+Кодировка файлов: UTF-8 с BOM (для корректного отображения кириллицы в NSIS)
+
+═══════════════════════════════════════════
+### ШАГ 3 — NSIS installer.nsh с чекбоксами
+═══════════════════════════════════════════
+
+Обнови файл: build/installer.nsh
+
+Добавь страницу с чекбоксами согласия ПЕРЕД страницей установки.
+Пользователь должен поставить галочки чтобы продолжить.
+
+Вот полный код для installer.nsh:
+```nsis
+; Transkrib SmartCut AI — Custom NSIS installer page
+; Страница согласия с документами
+
+!include "MUI2.nsh"
+!include "nsDialogs.nsh"
+!include "LogicLib.nsh"
+
+Var Dialog
+Var CheckEULA
+Var CheckPrivacy
+Var EULALink
+Var PrivacyLink
+Var EULAChecked
+Var PrivacyChecked
+
+; Кастомная страница согласия
+Page custom AgreementPage AgreementPageLeave
+
+Function AgreementPage
+  nsDialogs::Create 1018
+  Pop $Dialog
+  ${If} $Dialog == error
+    Abort
+  ${EndIf}
+
+  ; Заголовок
+  ${NSD_CreateLabel} 0 0 100% 20u "Пожалуйста, ознакомьтесь с документами и подтвердите своё согласие:"
+  Pop $0
+  SetCtlColors $0 "" transparent
+
+  ; Разделитель
+  ${NSD_CreateHLine} 0 22u 100% 1u ""
+  Pop $0
+
+  ; Ссылка на EULA
+  ${NSD_CreateLink} 0 30u 100% 12u "Лицензионное соглашение (EULA)"
+  Pop $EULALink
+  ${NSD_OnClick} $EULALink OpenEULA
+
+  ; Чекбокс EULA
+  ${NSD_CreateCheckbox} 0 45u 100% 12u "Я прочитал(а) и принимаю условия Лицензионного соглашения"
+  Pop $CheckEULA
+
+  ; Ссылка на Политику конфиденциальности
+  ${NSD_CreateLink} 0 62u 100% 12u "Политика конфиденциальности"
+  Pop $PrivacyLink
+  ${NSD_OnClick} $PrivacyLink OpenPrivacy
+
+  ; Чекбокс Privacy Policy
+  ${NSD_CreateCheckbox} 0 77u 100% 12u "Я прочитал(а) и принимаю Политику конфиденциальности"
+  Pop $CheckPrivacy
+
+  ; Подсказка
+  ${NSD_CreateLabel} 0 95u 100% 20u "Установка невозможна без принятия обоих документов."
+  Pop $0
+  SetCtlColors $0 808080 transparent
+
+  nsDialogs::Show
+FunctionEnd
+
+; Открыть EULA в блокноте
+Function OpenEULA
+  ExecShell "open" "$INSTDIR\docs\EULA_RU.txt"
+  ; Если ещё не установлено — открыть из temp
+  IfErrors 0 +2
+  ExecShell "open" "$EXEDIR\docs\EULA_RU.txt"
+FunctionEnd
+
+; Открыть Политику конфиденциальности
+Function OpenPrivacy
+  ExecShell "open" "$INSTDIR\docs\PRIVACY_POLICY_RU.txt"
+  IfErrors 0 +2
+  ExecShell "open" "$EXEDIR\docs\PRIVACY_POLICY_RU.txt"
+FunctionEnd
+
+; Проверка чекбоксов перед продолжением
+Function AgreementPageLeave
+  ${NSD_GetState} $CheckEULA $EULAChecked
+  ${NSD_GetState} $CheckPrivacy $PrivacyChecked
+
+  ${If} $EULAChecked != ${BST_CHECKED}
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Необходимо принять Лицензионное соглашение для продолжения установки."
+    Abort
+  ${EndIf}
+
+  ${If} $PrivacyChecked != ${BST_CHECKED}
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Необходимо принять Политику конфиденциальности для продолжения установки."
+    Abort
+  ${EndIf}
+FunctionEnd
+```
+
+═══════════════════════════════════════════
+### ШАГ 4 — Скопировать docs в установщик
+═══════════════════════════════════════════
+
+В electron-builder.yml добавь копирование папки docs в установку:
+
+extraResources:
+  - from: "docs/"
+    to: "docs/"
+    filter: ["*.md", "*.txt"]
+
+Также создай TXT версии для NSIS (читаемые при клике):
+- docs/EULA_RU.txt        ← копия build/license.txt
+- docs/PRIVACY_POLICY_RU.txt ← копия build/privacy.txt
+
+═══════════════════════════════════════════
+### ШАГ 5 — Проверка electron-builder.yml
+═══════════════════════════════════════════
+
+Убедись что в electron-builder.yml настроено:
+- license: "build/license.txt"   ← стандартная страница лицензии NSIS
+- include: "build/installer.nsh" ← наш кастомный скрипт
+
+Итоговый минимальный блок nsis в electron-builder.yml:
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  license: "build/license.txt"
+  include: "build/installer.nsh"
+  installerLanguages: ["Russian", "English"]
+  language: "1049"
+
+═══════════════════════════════════════════
+### Ограничения:
+═══════════════════════════════════════════
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/ затем копировать
+- Кодировка TXT файлов: UTF-8 с BOM
+- Не ломать существующий electron-builder.yml
+
+### Порядок выполнения:
+1. Прочитай docs/ и покажи что там есть сейчас
+2. Проверь и замени документы на наши версии
+3. Создай build/license.txt и build/privacy.txt
+4. Обнови build/installer.nsh
+5. Обнови electron-builder.yml
+6. Создай docs/EULA_RU.txt и docs/PRIVACY_POLICY_RU.txt
+7. Отчитайся по каждому шагу
+8. В конце скажи: "Готово к пересборке установщика. Запустите rebuild_installer.bat"

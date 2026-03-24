@@ -1,0 +1,75 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+КРИТИЧЕСКИЙ БАГ — Конец видео обрублен, прощание не включено
+
+Файлы:
+- backend/app/services/highlight_scorer.py
+- backend/app/pipeline.py
+- backend/app/services/ (посмотри analyze_highlights если есть)
+
+ПРОБЛЕМА:
+По правилам алгоритма приветствие и прощание спикера
+должны ВСЕГДА включаться в финальное видео (score 9-10).
+Но в реальном тесте конец видео был обрублен — 
+прощания нет.
+
+ИСПРАВЛЕНИЕ в highlight_scorer.py и/или pipeline.py:
+
+1. После получения всех scored сегментов —
+   принудительно добавить последние 60 секунд видео
+   (независимо от score):
+```python
+# Всегда включаем конец видео (прощание)
+ENDING_DURATION = 60  # секунд
+
+# Находим последний сегмент
+last_segment_end = max(seg['end'] for seg in all_segments)
+
+# Добавляем финальный клип если его нет в отобранных
+ending_start = max(0, last_segment_end - ENDING_DURATION)
+ending_already_included = any(
+    seg['end'] >= ending_start 
+    for seg in selected_segments
+)
+if not ending_already_included:
+    selected_segments.append({
+        'start': ending_start,
+        'end': last_segment_end,
+        'score': 10,
+        'reason': 'Обязательное завершение видео'
+    })
+```
+
+2. Аналогично для начала (приветствие) —
+   первые 60 секунд всегда включать:
+```python
+# Всегда включаем начало видео (приветствие)
+INTRO_DURATION = 60  # секунд
+
+intro_already_included = any(
+    seg['start'] <= INTRO_DURATION 
+    for seg in selected_segments
+)
+if not intro_already_included:
+    selected_segments.append({
+        'start': 0,
+        'end': min(INTRO_DURATION, first_segment_end),
+        'score': 10,
+        'reason': 'Обязательное приветствие'
+    })
+```
+
+3. После добавления — отсортировать по start:
+   selected_segments.sort(key=lambda x: x['start'])
+
+4. Сделать INTRO_DURATION и ENDING_DURATION
+   настраиваемыми через config.py:
+   APP_INTRO_DURATION=60
+   APP_ENDING_DURATION=60
+
+Проверь что это исправление работает в обоих путях:
+- через highlight_scorer.py (основной)
+- через analyze_highlights fallback
+
+После исправления — перезапусти backend сервер.

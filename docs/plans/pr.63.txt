@@ -1,0 +1,33 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО globals.css и HowItWorks.tsx. Всё остальное не трогать.
+
+ПРОБЛЕМА: Grid применён но карточки 3-6 не видны.
+Контейнер .how-section или родитель имеет overflow:hidden
+или ограниченную ширину.
+
+1. Найди в globals.css классы:
+   .how-section, .how-cards, .how-cards-visible
+   Убедись что нет overflow:hidden и нет max-width
+   который обрезает карточки.
+
+2. Добавь в globals.css:
+.how-section {
+  overflow: visible !important;
+}
+.how-it-works-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 12px !important;
+  overflow: visible !important;
+  width: 100% !important;
+}
+
+3. В HowItWorks.tsx убедись что:
+   - Нет компонента Carousel или Swiper
+   - Нет кнопок ← → навигации
+   - Нет dots (точек)
+   - Все 6 карточек рендерятся в одном контейнере
+
+Не использовать backticks. Только одинарные кавычки.
+После исправления ТОЛЬКО перезапусти Vite — не нужна пересборка.
+Отчёт по изменённым строкам.

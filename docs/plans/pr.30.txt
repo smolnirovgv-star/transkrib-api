@@ -1,0 +1,28 @@
+Контекст: Transkrib SmartCut AI
+
+СРОЧНЫЙ БАГ — ошибка компиляции в TaskBriefModal.tsx
+
+Ошибка: "Expecting Unicode escape sequence \uXXXX" на строке 75:30
+
+Файл: src/renderer/components/TaskBriefModal.tsx
+Строка 75:
+className={`brief-style-option${style === opt.value ? ' active' : ''}`}
+
+ПРОБЛЕМА: Обратные кавычки (backticks) в template literal
+некорректно сохранились из-за OneDrive — реальные переносы строк
+попали внутрь строки.
+
+ИСПРАВЛЕНИЕ:
+Замени template literal на конкатенацию строк:
+
+// Было (ошибка):
+className={`brief-style-option${style === opt.value ? ' active' : ''}`}
+
+// Стало (исправление):
+className={'brief-style-option' + (style === opt.value ? ' active' : '')}
+
+Проверь весь файл TaskBriefModal.tsx на наличие
+других template literals с обратными кавычками —
+замени все на конкатенацию строк или обычные строки.
+
+После исправления проверь npm run dev — ошибок быть не должно.

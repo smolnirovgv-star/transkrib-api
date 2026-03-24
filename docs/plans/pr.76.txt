@@ -1,0 +1,30 @@
+Контекст: Transkrib SmartCut AI
+ЗАДАЧА — Исправить деплой на Render
+
+Прочитай файл backend/requirements.txt и покажи его содержимое.
+
+Затем создай минимальный requirements.txt только с необходимыми пакетами:
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+aiofiles==24.1.0
+anthropic==0.39.0
+yt-dlp>=2024.10.22
+faster-whisper==1.0.3
+httpx==0.27.0
+
+Убери: supabase, ffmpeg-python, websockets, pydantic-core (устанавливается автоматически)
+
+Также убедись что backend/runtime.txt содержит:
+python-3.11.9
+
+Запушь:
+git add backend/requirements.txt backend/runtime.txt
+git commit -m "fix: minimal requirements for Render"
+git push origin main
+
+Отчёт по изменениям.

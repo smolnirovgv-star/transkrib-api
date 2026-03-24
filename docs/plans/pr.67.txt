@@ -1,0 +1,33 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО App.tsx строки вокруг screens-wrapper. Всё остальное не трогать.
+
+ЗАДАЧА — Убрать скользящий трек экранов навсегда
+
+В App.tsx найдена структура:
+<div className="screens-wrapper">
+  <div className="screens-track" style={{ transform: `translateX(-${screen * 100}%)` }}>
+    <div>Главная</div>
+    <div>Как работает</div>
+    <div>Цены</div>
+  </div>
+</div>
+
+Замени эту структуру на простое условное отображение:
+
+Вместо скользящего трека — показывать только активный экран:
+
+{screen === 0 && <div className='screen-main'>...</div>}
+{screen === 1 && <div className='screen-how'>...</div>}
+{screen === 2 && <div className='screen-prices'>...</div>}
+
+Убери полностью:
+- className='screens-wrapper'
+- className='screens-track'
+- style={{ transform: ... }}
+- overflow: hidden
+
+Сохрани всё содержимое каждого экрана как есть — 
+только убери оболочку карусели.
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт: покажи изменённые строки до и после.

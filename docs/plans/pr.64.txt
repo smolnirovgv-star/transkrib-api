@@ -1,0 +1,84 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО HowItWorks.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Убрать карусель раз и навсегда
+
+Прочитай полностью файл HowItWorks.tsx.
+Покажи мне:
+1. Строки 1-50 (импорты и начало компонента)
+2. Есть ли useState для currentIndex или activeSlide?
+3. Есть ли кнопки ← → в JSX?
+4. Есть ли transform или translateX в стилях?
+
+Затем замени ВСЁ содержимое файла на простую версию
+без карусели — просто grid с картами:
+
+Все 6 карточек должны отображаться в grid 3x2
+без кнопок навигации, без точек, без анимаций.
+
+Структура нового файла:
+import React from 'react'
+
+const steps = [
+  { num: 1, icon: '📥', title: 'Загрузите видео', desc: 'Перетащите файл или вставьте YouTube ссылку' },
+  { num: 2, icon: '🎙️', title: 'AI Анализ', desc: 'Нейросеть определяет ключевые моменты' },
+  { num: 3, icon: '✂️', title: 'Умная нарезка', desc: 'Автоматическое создание highlights' },
+  { num: 4, icon: '📝', title: 'Транскрипция', desc: 'Whisper распознаёт речь с высокой точностью' },
+  { num: 5, icon: '⬇️', title: 'Скачайте результат', desc: 'Готовое видео, субтитры и транскрипт' },
+  { num: 6, icon: '🔄', title: 'Переобработка', desc: 'Уточните ТЗ и получите новый вариант' },
+]
+
+export default function HowItWorks() {
+  return (
+    <div className='how-section'>
+      <div className='how-header'>
+        <span className='how-label'>ПРОЦЕСС</span>
+        <h2 className='how-title'>Как это работает</h2>
+      </div>
+      <div className='how-it-works-grid'>
+        {steps.map((step, i) => (
+          <React.Fragment key={step.num}>
+            <div className='how-card'>
+              <div className='how-card-icon'>{step.icon}</div>
+              <div className='how-card-num'>ШАГ {step.num}</div>
+              <h3 className='how-card-title'>{step.title}</h3>
+              <p className='how-card-desc'>{step.desc}</p>
+            </div>
+            {i < steps.length - 1 && i % 3 !== 2 && (
+              <div className='how-connector'>→</div>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+Добавь в globals.css:
+.how-it-works-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.how-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 16px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.how-card-icon { font-size: 32px; margin-bottom: 8px; }
+.how-card-num { font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.05em; margin-bottom: 6px; }
+.how-card-title { font-size: 14px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.how-card-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.how-connector { display: none; }
+.how-header { text-align: center; margin-bottom: 24px; }
+.how-label { font-size: 11px; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; }
+.how-title { font-size: 28px; font-weight: 700; margin-top: 8px; color: var(--text-primary); }
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт — покажи строки 1-30 нового файла.

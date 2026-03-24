@@ -1,0 +1,95 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ЗАДАЧА — Исправить 3 проблемы: видео, транскрипт, скачивание
+
+═══════════════════════════════════════════
+БАГ 1 — Видео не воспроизводится в браузере
+═══════════════════════════════════════════
+
+Файл: backend/app/routers/standalone_tasks_router.py
+
+Найди endpoint GET /api/tasks/result/{filename}
+Добавь поддержку Range requests:
+
+from fastapi.responses import FileResponse
+from fastapi import Request
+import os
+
+@router.api_route('/result/{filename}', methods=['GET','HEAD'])
+async def get_result(filename: str, request: Request):
+    filepath = get_result_path(filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404)
+    
+    file_size = os.path.getsize(filepath)
+    range_header = request.headers.get('range')
+    
+    if range_header:
+        # Поддержка Range requests для видео
+        start, end = 0, file_size - 1
+        range_match = range_header.replace('bytes=', '').split('-')
+        if range_match[0]: start = int(range_match[0])
+        if range_match[1]: end = int(range_match[1])
+        
+        chunk_size = end - start + 1
+        
+        def iterfile():
+            with open(filepath, 'rb') as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining:
+                    chunk = f.read(min(65536, remaining))
+                    if not chunk: break
+                    remaining -= len(chunk)
+                    yield chunk
+        
+        headers = {
+            'Content-Range': 'bytes ' + str(start) + '-' + str(end) + '/' + str(file_size),
+            'Accept-Ranges': 'bytes',
+            'Content-Length': str(chunk_size),
+            'Content-Type': 'video/mp4'
+        }
+        return StreamingResponse(iterfile(), status_code=206, headers=headers)
+    
+    return FileResponse(
+        filepath,
+        media_type='video/mp4',
+        headers={'Accept-Ranges': 'bytes', 'Content-Length': str(file_size)}
+    )
+
+═══════════════════════════════════════════
+БАГ 2 — Транскрипт endpoint не найден
+═══════════════════════════════════════════
+
+Файл: backend/app/main.py или standalone_server.py
+
+Проверь что роутер транскрипта подключён:
+app.include_router(transcript_router, prefix='/api')
+
+Если нет — добавь импорт и подключение.
+
+Файл: backend/app/routers/transcript.py
+
+Проверь что endpoint существует:
+GET /api/transcript/{filename}
+GET /api/transcript/{filename}/download
+
+═══════════════════════════════════════════
+БАГ 3 — Скачивание файлов
+═══════════════════════════════════════════
+
+Файл: backend/app/routers/transcript.py
+
+Добавь methods=['GET','HEAD'] на download endpoint:
+@router.api_route('/{filename}/download', methods=['GET','HEAD'])
+
+После исправлений:
+1. Перезапусти backend
+2. Проверь curl:
+   curl -I http://127.0.0.1:8000/api/tasks/result/[filename]
+   Должен вернуть: Accept-Ranges: bytes
+3. Отчёт по изменённым файлам
+
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/

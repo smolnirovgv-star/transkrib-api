@@ -1,0 +1,21 @@
+Контекст: Transkrib SmartCut AI
+
+ЗАДАЧА — Исправить логотип SVG не загружается
+
+Файл: src/renderer/components/TitleBar.tsx
+(или AppHeader.tsx — где добавлен логотип)
+
+ПРОБЛЕМА: <img src="logo.svg" alt="logo"/> показывает
+битую картинку — путь к файлу неверный.
+
+Исправь импорт:
+// Было:
+<img src="logo.svg" alt="logo" />
+
+// Должно быть:
+import logoSvg from '../assets/logo.svg'
+...
+<img src={logoSvg} alt="Transkrib" width={28} height={28} />
+
+Убедись что файл assets/logo.svg существует.
+Если нет — создай его с геральдическим щитом из pr.28.

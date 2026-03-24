@@ -1,0 +1,355 @@
+# pr.77 — Добавить поддержку macOS и автосборку через GitHub Actions
+
+**Статус:** в работе  
+**Дата:** 23.03.2026  
+**Исполнитель:** Claude (Cursor)
+
+---
+
+## Контекст проекта
+
+Electron-приложение Transkrib SmartCut AI.
+Живой бэкенд API: https://transkrib-api.onrender.com
+
+Структура проекта (то что уже есть):
+```
+transkrib-app/
+├── .github/
+│   └── workflows/          ← сюда добавить build.yml (создать папку если нет)
+├── platforms/
+│   ├── desktop_windows/    ← уже работает, брать за образец
+│   └── desktop_mac/        ← создать по образцу windows
+├── backend/                ← не трогать, уже на сервере Render
+├── docs/
+│   └── plans/
+│       └── pr.77.md        ← этот файл
+└── package.json            ← корневой, не трогать
+```
+
+---
+
+## Важное архитектурное решение
+
+Windows-версия запускает бэкенд ЛОКАЛЬНО внутри приложения.
+macOS-версия использует УДАЛЁННЫЙ сервер https://transkrib-api.onrender.com
+
+Причина: это ускоряет выход на рынок. Офлайн-режим для Mac можно добавить позже.
+
+---
+
+## Шаг 0 — Сначала изучи существующий код (не пропускай!)
+
+Прежде чем создавать файлы, найди ответы на эти вопросы в коде:
+
+**Вопрос 1.** Открой `platforms/desktop_windows/src/main/index.ts` (или index.js).
+Найди где прописан URL бэкенда — ищи слова `localhost`, `127.0.0.1`, `8000`,
+`spawn`, `child_process`, `backend`. Покажи мне этот блок кода.
+
+**Вопрос 2.** Есть ли файл `platforms/desktop_windows/.env`?
+Если есть — покажи его содержимое (без секретных ключей, только названия переменных).
+
+**Вопрос 3.** Есть ли файл `platforms/desktop_windows/build/icon.png`
+или любой PNG файл иконки размером 1024×1024?
+
+После того как найдёшь ответы — продолжай по шагам ниже.
+
+---
+
+## Шаг 1 — Создать platforms/desktop_mac/
+
+### 1.1 Скопируй всю папку desktop_windows в desktop_mac
+
+```bash
+cp -r platforms/desktop_windows platforms/desktop_mac
+```
+
+### 1.2 Замени platforms/desktop_mac/package.json
+
+Измени только эти поля (остальное не трогай):
+- `"name"` → `"transkrib-mac"`
+- `"description"` → `"Transkrib Desktop - macOS Electron App"`
+- Переименуй скрипт `"build:windows"` → `"build:mac"`
+- Измени команду на: `"npm run build && electron-builder --mac"`
+
+### 1.3 Замени platforms/desktop_mac/electron-builder.yml полностью
+
+```yaml
+appId: com.transkrib.smartcut
+productName: Transkrib SmartCut AI
+copyright: Copyright © 2026 Transkrib SmartCut AI
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  minimumSystemVersion: "12.0"
+
+dmg:
+  background: build/dmg-background.png
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 130
+      y: 180
+      type: file
+    - x: 410
+      y: 180
+      type: link
+      path: /Applications
+
+asar: true
+compression: maximum
+```
+
+ВАЖНО: секции `win:`, `nsis:` и `extraResources:` из Windows конфига
+в этот файл НЕ копировать.
+
+### 1.4 Адаптируй platforms/desktop_mac/src/main/index.ts
+
+Найди блок где запускается локальный бэкенд (spawn/exec/child_process).
+Замени его на константу с URL удалённого сервера:
+
+```typescript
+// Для macOS используем удалённый сервер
+const API_BASE_URL = process.env.VITE_API_URL
+  || 'https://transkrib-api.onrender.com';
+```
+
+Если в коде есть функция типа `startBackend()` или `launchBackend()` —
+в mac-версии просто не вызывай её (закомментируй вызов).
+
+### 1.5 Создай platforms/desktop_mac/.env
+
+```env
+VITE_API_URL=https://transkrib-api.onrender.com
+VITE_SUPABASE_URL=         ← скопируй значение из desktop_windows/.env
+VITE_SUPABASE_ANON_KEY=    ← скопируй значение из desktop_windows/.env
+```
+
+### 1.6 Создай platforms/desktop_mac/.env.example
+
+```env
+VITE_API_URL=https://transkrib-api.onrender.com
+VITE_SUPABASE_URL=your_supabase_url_here
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+```
+
+### 1.7 Создай иконку для macOS
+
+Иконка для Mac должна быть в формате `.icns` (это специальный формат Apple).
+Создай из существующего PNG файла иконки.
+
+Если есть `icon.png` в папке build — выполни в терминале на Mac:
+```bash
+cd platforms/desktop_mac/build
+mkdir icon.iconset
+sips -z 16 16     icon.png --out icon.iconset/icon_16x16.png
+sips -z 32 32     icon.png --out icon.iconset/icon_16x16@2x.png
+sips -z 32 32     icon.png --out icon.iconset/icon_32x32.png
+sips -z 64 64     icon.png --out icon.iconset/icon_32x32@2x.png
+sips -z 128 128   icon.png --out icon.iconset/icon_128x128.png
+sips -z 256 256   icon.png --out icon.iconset/icon_128x128@2x.png
+sips -z 256 256   icon.png --out icon.iconset/icon_256x256.png
+sips -z 512 512   icon.png --out icon.iconset/icon_256x256@2x.png
+sips -z 512 512   icon.png --out icon.iconset/icon_512x512.png
+cp icon.png            icon.iconset/icon_512x512@2x.png
+iconutil -c icns icon.iconset
+rm -r icon.iconset
+```
+
+Если нет PNG иконки — создай заглушку через Python:
+```bash
+python3 -c "
+from PIL import Image, ImageDraw
+img = Image.new('RGBA', (1024, 1024), (30, 30, 40, 255))
+d = ImageDraw.Draw(img)
+d.ellipse([200, 200, 824, 824], fill=(91, 95, 239, 255))
+img.save('platforms/desktop_mac/build/icon.png')
+print('icon.png создан')
+"
+```
+Если PIL не установлен: `pip3 install Pillow`
+Затем повтори команды sips выше.
+
+### 1.8 Создай фон для окна установщика DMG
+
+```bash
+python3 -c "
+from PIL import Image, ImageDraw
+img = Image.new('RGB', (540, 380), (15, 15, 22))
+d = ImageDraw.Draw(img)
+d.text((270, 160), 'Transkrib SmartCut AI', fill=(91, 95, 239), anchor='mm')
+d.text((270, 200), 'Перетащите в папку Applications', fill=(100, 100, 120), anchor='mm')
+img.save('platforms/desktop_mac/build/dmg-background.png')
+print('dmg-background.png создан')
+"
+```
+
+---
+
+## Шаг 2 — Создать .github/workflows/build.yml
+
+Создай папку `.github/workflows/` в КОРНЕ проекта (если не существует).
+Создай файл `.github/workflows/build.yml`:
+
+```yaml
+name: Build Desktop Apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: platforms/desktop_windows/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: platforms/desktop_windows
+
+      - name: Build Windows installer
+        run: npm run build:windows
+        working-directory: platforms/desktop_windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: platforms/desktop_windows/release/*.exe
+          retention-days: 5
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: platforms/desktop_mac/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: platforms/desktop_mac
+
+      - name: Build macOS installer
+        run: npm run build:mac
+        working-directory: platforms/desktop_mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-installer
+          path: platforms/desktop_mac/release/*.dmg
+          retention-days: 5
+
+  publish-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: ./release
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-installer
+          path: ./release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./release/*.exe
+            ./release/*.dmg
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+---
+
+## Шаг 3 — Добавить .gitignore для desktop_mac
+
+В файл `platforms/desktop_mac/.gitignore` добавь (или создай):
+```
+node_modules/
+dist/
+release/
+.env
+```
+
+---
+
+## Что НЕ трогать
+
+- `platforms/desktop_windows/` — не изменять ничего
+- `backend/` — не трогать
+- Корневой `package.json` — не трогать
+- Подпись кода Apple (codesigning) — не настраивать, это следующая задача
+
+---
+
+## Ожидаемый результат
+
+```
+transkrib-app/
+├── .github/
+│   └── workflows/
+│       └── build.yml              ✅ новый
+├── platforms/
+│   ├── desktop_windows/           ✅ не изменён
+│   └── desktop_mac/               ✅ новый
+│       ├── package.json           ✅
+│       ├── electron-builder.yml   ✅
+│       ├── .env                   ✅
+│       ├── .env.example           ✅
+│       ├── .gitignore             ✅
+│       ├── build/
+│       │   ├── icon.icns          ✅
+│       │   └── dmg-background.png ✅
+│       └── src/                   ✅ скопирован + URL бэкенда заменён
+```
+
+После выполнения напиши мне:
+1. Что нашёл в Шаге 0 (как запускается бэкенд в Windows-версии)
+2. Какие файлы создал
+3. Если были ошибки или непонятные места — покажи их

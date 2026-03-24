@@ -1,0 +1,45 @@
+Ты работаешь с проектом Transkrib SmartCut AI.
+Путь к проекту: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА: Настроить авторизацию через Supabase и протестировать её.
+
+Supabase проект: aakxqjpyikhjzkfvwppu.supabase.co
+
+ШАГ 1 — Проверь текущий .env файл:
+Прочитай файл .env в корне проекта и покажи его содержимое (без секретных ключей — только названия переменных).
+
+ШАГ 2 — Получи Supabase ключи:
+Открой в браузере https://supabase.com/dashboard/project/aakxqjpyikhjzkfvwppu/settings/api
+Найди и сохрани:
+- Project URL
+- anon/public ключ
+
+ШАГ 3 — Добавь в .env:
+Добавь в файл .env следующие строки (не удаляя существующие):
+VITE_SUPABASE_URL=https://aakxqjpyikhjzkfvwppu.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon ключ из dashboard>
+
+ШАГ 4 — Проверь supabaseClient.ts:
+Файл находится в src/lib/supabaseClient.ts
+Убедись что переменная supabaseConfigured будет true после добавления ключей.
+Если есть проблемы в коде — исправь их.
+
+ШАГ 5 — Отключи Email Confirmation для тестов:
+Открой https://supabase.com/dashboard/project/aakxqjpyikhjzkfvwppu/auth/providers
+Найди Email provider → отключи "Confirm email"
+
+ШАГ 6 — Перезапусти dev-сервер:
+Останови текущий сервер если запущен (Ctrl+C)
+Запусти: npm run dev
+
+ШАГ 7 — Протестируй регистрацию:
+Открой приложение в браузере (обычно http://localhost:5173)
+Попробуй зарегистрироваться с тестовым email: test@transkrib.com, пароль: Test123456!
+Проверь консоль браузера на ошибки (F12)
+Проверь https://supabase.com/dashboard/project/aakxqjpyikhjzkfvwppu/auth/users — должен появиться новый пользователь
+
+ШАГ 8 — Протестируй вход:
+Войди с теми же данными
+Убедись что модал закрывается и пользователь авторизован
+
+Сообщи о результате каждого шага. Если что-то не работает — покажи текст ошибки и предложи исправление.

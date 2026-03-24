@@ -1,0 +1,64 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО HowItWorks.tsx и globals.css. Всё остальное не трогать.
+
+ЗАДАЧА — Показать все 4 карточки "Как работает" на одном экране
+
+Файл: src/renderer/components/HowItWorks.tsx
+(или где находится секция "Как это работает")
+
+ПРОБЛЕМА: Сейчас карточки отображаются как карусель
+— видно только 2 карточки, остальные за стрелками.
+
+РЕШЕНИЕ: Убрать карусель, показать все 4 карточки
+в один ряд на одном экране.
+
+Замени карусель на grid:
+
+// Убрать: стрелки ←, →, точки навигации, слайдер
+// Добавить: grid с 4 колонками
+
+CSS в globals.css:
+.how-it-works-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 0 16px;
+  width: 100%;
+}
+
+.step-card {
+  padding: 16px 12px;
+  min-height: unset;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.step-card .step-icon {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 8px;
+}
+
+.step-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.step-card p {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+Убедись что:
+- Стрелки навигации убраны полностью
+- Точки (dots) убраны полностью
+- Все 4 карточки видны без скролла
+- Стрелки между карточками → остаются
+
+Не использовать backticks. Только одинарные кавычки.
+После исправления запусти rebuild_installer.bat
+Отчёт только по изменённым строкам.

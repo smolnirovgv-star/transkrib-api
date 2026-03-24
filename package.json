@@ -1,0 +1,20 @@
+{
+  "name": "transkrib-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cross-platform video transcription & highlights tool",
+  "scripts": {
+    "build:windows": "cd platforms/desktop_windows && npm install && npm run build:windows",
+    "build:mac": "cd platforms/desktop_mac && npm install && npm run build:mac",
+    "build:browser": "cd platforms/browser && npm install && npm run build",
+    "build:mobile": "cd platforms/mobile && npm install && npx expo prebuild",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:worker": "cd backend && celery -A app.workers.celery_app worker --loglevel=info --concurrency=1",
+    "dev:browser": "cd platforms/browser && npm run dev",
+    "dev:windows": "cd platforms/desktop_windows && npm run dev",
+    "dev:mac": "cd platforms/desktop_mac && npm run dev",
+    "dev:mobile": "cd platforms/mobile && npx expo start",
+    "docker:up": "docker-compose up --build",
+    "docker:down": "docker-compose down"
+  }
+}

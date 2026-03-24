@@ -1,0 +1,17 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА — Исправить 2 бага в UrlInput:
+
+БАГ 1 — Поле ввода не реагирует на клавиатуру в браузере
+Файл: src/renderer/components/UrlInput.tsx
+Поле input не принимает ввод с клавиатуры.
+Проверь: -webkit-app-region: drag на родительском контейнере
+перехватывает события. Добавь -webkit-app-region: no-drag
+на input и кнопку.
+
+БАГ 2 — Кнопка "Отправить" обрезается снизу
+Высота контейнера UrlInput недостаточна.
+Убедись что кнопка полностью видна без скролла.
+
+После исправлений проверь через npm run dev.

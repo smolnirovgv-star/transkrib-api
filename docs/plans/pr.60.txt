@@ -1,0 +1,81 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО TranscriptViewer.tsx и globals.css. Всё остальное не трогать.
+
+ЗАДАЧА — Добавить поиск и фильтр важных моментов в TranscriptViewer
+
+Файл: src/renderer/components/TranscriptViewer.tsx
+
+Прочитай файл. Добавь панель управления над транскриптом:
+
+┌─────────────────────────────────────────────────┐
+│ [🔍 Поиск по тексту...          ] [Все] [Важные]│
+└─────────────────────────────────────────────────┘
+
+1. Поле поиска:
+const [searchQuery, setSearchQuery] = useState('')
+
+2. Фильтр режима:
+const [filterMode, setFilterMode] = useState('all')
+// 'all' = все фразы, 'important' = важные моменты
+
+3. Важные моменты — загружать при открытии:
+useEffect(() => {
+  fetch('http://127.0.0.1:8000/api/transcript/' + encodeURIComponent(filename) + '/highlights')
+    .then(r => r.json())
+    .then(d => setHighlights(d.highlights || []))
+    .catch(() => setHighlights([]))
+}, [filename])
+
+4. Фильтрация сегментов:
+const displaySegments = segments.filter(seg => {
+  const matchesSearch = searchQuery.trim() === '' ||
+    seg.text.toLowerCase().includes(searchQuery.toLowerCase())
+  const matchesFilter = filterMode === 'all' ||
+    (filterMode === 'important' && highlights.some(h => h.start === seg.start))
+  return matchesSearch && matchesFilter
+})
+
+5. Подсветка найденного текста:
+Если searchQuery не пустой — подсвечивать найденный текст 
+желтым фоном в сегменте
+
+6. CSS в globals.css:
+.transcript-search-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  align-items: center;
+}
+.transcript-search-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+.transcript-filter-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.transcript-filter-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light, rgba(124,58,237,0.08));
+}
+.transcript-highlight {
+  background: rgba(255,220,0,0.35);
+  border-radius: 2px;
+}
+
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+После исправления запусти rebuild_installer.bat
+Отчёт только по изменённым строкам.

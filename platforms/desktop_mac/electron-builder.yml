@@ -1,0 +1,38 @@
+appId: com.transkrib.smartcut
+productName: Transkrib SmartCut AI
+copyright: Copyright © 2026 Transkrib SmartCut AI
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+  icon: build/icon.png
+  category: public.app-category.productivity
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  minimumSystemVersion: "12.0"
+
+dmg:
+  background: build/dmg-background.png
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 130
+      y: 180
+      type: file
+    - x: 410
+      y: 180
+      type: link
+      path: /Applications
+
+asar: true
+compression: maximum

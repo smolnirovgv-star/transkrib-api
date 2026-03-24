@@ -1,0 +1,110 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ВАЖНО: Изменять ТОЛЬКО ResultGallery.tsx и globals.css.
+Всё остальное оставить без изменений.
+
+ЗАДАЧА — Полный редизайн экрана результатов
+
+Сначала прочитай:
+- src/renderer/components/ResultGallery.tsx
+- src/renderer/styles/globals.css
+
+═══════════════════════════════════════════
+НОВЫЙ ДИЗАЙН ResultGallery
+═══════════════════════════════════════════
+
+Структура экрана:
+
+┌─────────────────────────────────────┬──┐
+│  ← Назад                            │📁│
+│                                     │  │
+│  ┌───────────────────────────────┐  │  │
+│  │                               │  │  │
+│  │      HTML5 VIDEO ПЛЕЕР        │  │  │
+│  │      (большой, по центру)     │  │  │
+│  │                               │  │  │
+│  └───────────────────────────────┘  │  │
+│  Название файла                     │  │
+│  00:25:27 · 79.6 МБ                 │  │
+│                                     │  │
+│  [📄 Транскрипт▾] [⬆ Экспорт]      │  │
+│  [⬇ Скачать]      [🗑 Удалить]      │  │
+│                                     │  │
+│  Карта сегментов ▾                  │  │
+└─────────────────────────────────────┴──┘
+
+КОМПОНЕНТ 1 — Главный плеер:
+- video тег с controls, width 100%
+- max-width: 800px, margin: 0 auto
+- border-radius: 12px
+- box-shadow: 0 4px 24px rgba(0,0,0,0.15)
+- src: 'http://127.0.0.1:8000/api/tasks/result/' + encodeURIComponent(filename)
+- Если нет electronAPI — использовать HTTP URL
+- Если есть electronAPI — использовать getResultPath
+
+КОМПОНЕНТ 2 — Кнопка папки (правый край):
+- position: fixed, right: 12px, top: 50%
+- transform: translateY(-50%)
+- background: var(--accent) с opacity 0.9
+- border-radius: 12px
+- padding: 12px 8px
+- cursor: pointer
+- иконка: FolderOpen из lucide-react (size 24, color white)
+- badge снизу: количество видео (белый текст, маленький)
+- z-index: 100
+
+КОМПОНЕНТ 3 — Выезжающая панель архива:
+- position: fixed, right: 0, top: 0, bottom: 0
+- width: 220px
+- background: var(--bg-primary)
+- border-left: 1px solid var(--border-color)
+- box-shadow: -4px 0 16px rgba(0,0,0,0.12)
+- z-index: 99
+- transform: translateX(100%) когда закрыта
+- transform: translateX(0) когда открыта
+- transition: transform 0.25s ease
+
+Заголовок панели:
+  'Обработанные видео' + кнопка [×] закрыть
+
+Каждый элемент в панели:
+  - миниатюра video (40x40, object-fit: cover)
+  - название файла (12px, обрезать с ...)
+  - дата обработки (11px, --text-muted)
+  - при клике: выбрать это видео в главном плеере + закрыть панель
+  - подсветка активного: border-left 3px solid var(--accent)
+
+КОМПОНЕНТ 4 — Транскрипт справа от плеера (бонус):
+- При открытом TranscriptViewer — показывать его
+  в правой колонке рядом с плеером
+- Ширина транскрипта: 280px
+- Высота: совпадает с плеером
+- overflow-y: auto
+- Активная фраза подсвечивается при воспроизведении
+
+ЛОГИКА:
+- selectedIndex: индекс выбранного видео (default: 0 — последнее)
+- При смене видео в панели: обновить selectedIndex
+- Dropdown транскрипта: right: 0, left: auto (исправить)
+- Все кнопки действий работают для selectedIndex видео
+
+CSS классы в globals.css (добавить):
+.result-main-container
+.result-player-wrap
+.result-player-video
+.result-meta
+.result-actions
+.result-folder-btn
+.result-folder-badge
+.result-archive-panel
+.result-archive-panel.open
+.result-archive-item
+.result-archive-item.active
+.result-archive-thumb
+
+Не использовать backticks (`).
+Только одинарные или двойные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+TypeScript строгий.
+Отчёт по изменённым файлам.

@@ -1,0 +1,34 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО ResultGallery.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Исправить путь к видео в Electron
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Найди функцию getVideoUrl или место где формируется src для video тега.
+
+Проблема: electronAPI.getResultPath возвращает Windows путь:
+C:\Users\Admin\AppData\Roaming\Transkrib\storage\results\file.mp4
+
+Но video тег требует file:// URL:
+file:///C:/Users/Admin/AppData/Roaming/Transkrib/storage/results/file.mp4
+
+Исправь функцию:
+
+const getVideoUrl = async (filename) => {
+  if (window.electronAPI && window.electronAPI.getResultPath) {
+    const filePath = await window.electronAPI.getResultPath(filename)
+    if (filePath) {
+      // Конвертировать Windows путь в file:// URL
+      const fileUrl = 'file:///' + filePath.replace(/\\/g, '/')
+      return fileUrl
+    }
+  }
+  return 'http://127.0.0.1:8000/api/tasks/result/' + encodeURIComponent(filename)
+}
+
+Убедись что video src обновляется через useEffect или useState
+когда меняется selectedIndex или filename.
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

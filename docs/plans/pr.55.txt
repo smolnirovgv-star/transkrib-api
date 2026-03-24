@@ -1,0 +1,277 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ЗАДАЧА — Исправить 6 багов найденных при тестировании
+
+Сначала прочитай файлы:
+- src/renderer/components/ResultGallery.tsx
+- src/renderer/components/TranscriptViewer.tsx
+- src/renderer/components/ExportModal.tsx
+- src/renderer/components/SegmentTimeline.tsx
+- src/renderer/styles/globals.css
+- backend/app/routers/transcript.py
+- backend/app/services/highlight_scorer.py
+
+═══════════════════════════════════════════
+БАГ 1 — Логотип не отображается
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/TitleBar.tsx
+(или AppHeader.tsx)
+
+Логотип logo.svg не прорисовывается в Electron.
+Причина: путь к файлу неверный в production build.
+
+Исправить импорт:
+import logoSvg from '../assets/logo.svg'
+
+Убедись что в vite.config.ts SVG обрабатывается:
+assetsInclude: ['**/*.svg']
+
+Или заменить SVG на inline React компонент —
+нарисовать логотип прямо в JSX без внешнего файла:
+
+const Logo = () => (
+  <svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+    <path d="M24 2 L44 10 L44 26 C44 36 34 44 24 46 C14 44 4 36 4 26 L4 10 Z" fill="#7C3AED" stroke="#5B21B6" strokeWidth="1.5"/>
+    <rect x="14" y="14" width="20" height="3" rx="1.5" fill="white"/>
+    <rect x="21.5" y="17" width="5" height="16" rx="2" fill="white"/>
+  </svg>
+)
+
+Используй <Logo /> вместо <img src={logoSvg}>
+
+═══════════════════════════════════════════
+БАГ 2 — Карточки "Как работает" не влезают
+═══════════════════════════════════════════
+
+Файл: src/renderer/styles/globals.css
+
+Найди стили для карточек .how-it-works или .step-card.
+Уменьши размеры чтобы все карточки видны на экране:
+
+.step-card {
+  min-height: unset;
+  padding: 16px;
+}
+
+.step-card .step-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.how-it-works-grid {
+  gap: 12px;
+}
+
+Или добавь overflow: auto на контейнер.
+Карточки должны быть видны без прокрутки.
+
+═══════════════════════════════════════════
+БАГ 3 — Кнопка Удалить не удаляет видео
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Найди функцию handleDelete или onClick удаления.
+
+В браузерном режиме нет electronAPI — добавь fallback:
+
+const handleDelete = async (filename) => {
+  const confirmed = window.confirm('Удалить ' + filename + '?')
+  if (!confirmed) return
+  
+  try {
+    // Удалить через backend API
+    const res = await fetch(
+      'http://127.0.0.1:8000/api/tasks/result/' + encodeURIComponent(filename),
+      { method: 'DELETE' }
+    )
+    if (res.ok) {
+      // Удалить из списка
+      setResults(prev => prev.filter(r => r.filename !== filename))
+      if (selected && selected.filename === filename) {
+        setSelected(null)
+      }
+    }
+  } catch (e) {
+    console.error('Delete error:', e)
+  }
+}
+
+Добавь DELETE endpoint в backend:
+Файл: backend/app/routers/standalone_tasks_router.py
+
+@router.delete('/result/{filename}')
+async def delete_result(filename: str):
+    filepath = get_result_path(filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    return {'deleted': filename}
+
+═══════════════════════════════════════════
+БАГ 4 — Карта сегментов не реагирует
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/SegmentTimeline.tsx
+
+Кнопки "Включён/Вырезан" не меняют сегменты.
+
+Найди обработчик переключения сегментов.
+Убедись что state обновляется и UI перерисовывается:
+
+const toggleSegment = (index) => {
+  setSegments(prev => prev.map((seg, i) => 
+    i === index ? {...seg, included: !seg.included} : seg
+  ))
+}
+
+Убедись что кнопки вызывают toggleSegment.
+Добавь визуальный feedback — цвет сегмента меняется.
+
+═══════════════════════════════════════════
+БАГ 5 — Транскрипт: важные моменты не найдены, поиск не работает
+═══════════════════════════════════════════
+
+Часть А — Поиск по тексту:
+Файл: src/renderer/components/TranscriptViewer.tsx
+
+Найди функцию поиска (handleSearch или filter).
+Исправь чтобы фильтрация работала по тексту сегментов:
+
+const filteredSegments = segments.filter(seg =>
+  seg.text.toLowerCase().includes(searchQuery.toLowerCase())
+)
+
+Убедись что filteredSegments используется в рендере.
+
+Часть Б — Важные моменты (highlights):
+Файл: backend/app/services/highlight_scorer.py
+
+Проверь что score_phrases() возвращает фразы
+с оценкой >= threshold (обычно 5 или 6).
+
+Добавь логирование:
+import logging
+logger = logging.getLogger(__name__)
+logger.info('Top phrases: %s', sorted_phrases[:10])
+
+Убедись что API endpoint возвращает highlights:
+GET /api/transcript/{filename} должен возвращать:
+{
+  "segments": [...],
+  "highlights": [...],  // топ фразы
+  "formatted_text": "..."
+}
+
+═══════════════════════════════════════════
+БАГ 6 — Экспорт видео: Source file not found
+═══════════════════════════════════════════
+
+Файл: backend/app/routers/standalone_tasks_router.py
+(или export_router.py)
+
+Ошибка "Source file not found" при экспорте.
+Проблема: путь к исходному файлу неверный.
+
+Исправь функцию экспорта:
+
+import os
+from pathlib import Path
+
+def get_result_path(filename):
+    appdata = os.environ.get('APPDATA', '')
+    return os.path.join(appdata, 'Transkrib', 'storage', 'results', filename)
+
+Перед экспортом проверяй:
+source_path = get_result_path(filename)
+if not os.path.exists(source_path):
+    # Попробовать альтернативные пути
+    alt_paths = [
+        os.path.join(os.path.dirname(__file__), '..', '..', 'storage', 'results', filename),
+        os.path.join('storage', 'results', filename)
+    ]
+    for alt in alt_paths:
+        if os.path.exists(alt):
+            source_path = alt
+            break
+    else:
+        raise HTTPException(404, 'Source file not found: ' + filename)
+
+═══════════════════════════════════════════
+ДОПОЛНИТЕЛЬНО — Telegram ссылка
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/AppFooter.tsx
+
+Найди кнопку TG и добавь ссылку:
+https://t.me/video_transkrib
+
+Открывать через:
+if (window.electronAPI && window.electronAPI.openExternal) {
+  window.electronAPI.openExternal('https://t.me/video_transkrib')
+} else {
+  window.open('https://t.me/video_transkrib', '_blank')
+}
+
+═══════════════════════════════════════════
+После всех исправлений:
+═══════════════════════════════════════════
+1. Проверь TypeScript: npx tsc --noEmit
+2. Запусти: rebuild_installer.bat
+3. Отчёт по каждому багу
+
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ДОБАВИТЬ к предыдущему промту pr.54:
+
+БАГ 7 — Кнопка "Скачать" видео не работает
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Найди кнопку "Скачать" и её обработчик.
+
+В Electron режиме — использовать dialog сохранения:
+if (window.electronAPI && window.electronAPI.saveFile) {
+  window.electronAPI.saveFile({
+    filename: selected.filename,
+    sourcePath: filePath
+  })
+} else {
+  // Браузерный режим — скачать через ссылку
+  const url = 'http://127.0.0.1:8000/api/tasks/result/' 
+    + encodeURIComponent(selected.filename)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = selected.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
+Файл: electron/preload.ts — добавить:
+saveFile: (opts) => ipcRenderer.invoke('app:saveFile', opts)
+
+Файл: electron/index.ts — добавить handler:
+ipcMain.handle('app:saveFile', async (_e, opts) => {
+  const { dialog } = require('electron')
+  const result = await dialog.showSaveDialog({
+    defaultPath: opts.filename,
+    filters: [{ name: 'Video', extensions: ['mp4'] }]
+  })
+  if (!result.canceled && result.filePath) {
+    const fs = require('fs')
+    fs.copyFileSync(opts.sourcePath, result.filePath)
+    return result.filePath
+  }
+  return null
+})
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

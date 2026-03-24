@@ -1,0 +1,4 @@
+В файле backend/app/services/highlight_scorer.py
+на строке 59 ошибка "unterminated string literal" —
+тот же баг с необработанными обратными слэшами.
+Найди и исправь все \ на \\ в строках с путями Windows.

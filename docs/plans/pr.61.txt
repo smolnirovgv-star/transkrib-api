@@ -1,0 +1,39 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО ResultGallery.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Разделить кнопки Скачать и Экспорт видео
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+КНОПКА 1 — Скачать (мгновенное скачивание):
+Должна скачивать MP4 файл сразу в папку Загрузки
+БЕЗ диалога выбора папки.
+
+В браузерном режиме:
+const handleDownload = () => {
+  const url = 'http://127.0.0.1:8000/api/tasks/result/' 
+    + encodeURIComponent(selected.filename)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = selected.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
+В Electron режиме:
+if (window.electronAPI && window.electronAPI.downloadResult) {
+  window.electronAPI.downloadResult(selected.filename)
+}
+
+КНОПКА 2 — Экспорт видео:
+Оставить как есть — открывает ExportModal с настройками
+(формат, качество, субтитры, выбор папки).
+Ничего не менять в ExportModal.
+
+Убедись что handleDownload и handleExport
+это РАЗНЫЕ функции вызываемые разными кнопками.
+
+Не использовать backticks. Только одинарные кавычки.
+После исправления запусти rebuild_installer.bat
+Отчёт только по изменённым строкам.

@@ -1,0 +1,10 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО pipeline.py и config.py
+
+Замени openai-whisper на faster-whisper:
+pip install faster-whisper
+
+В pipeline.py замени загрузку модели:
+from faster_whisper import WhisperModel
+model = WhisperModel('tiny', device='cpu', compute_type='int8')
+segments, info = model.transcribe(audio_path, beam_size=1, vad_filter=True)

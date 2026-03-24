@@ -1,0 +1,78 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+Платформа: platforms/desktop_windows/src/renderer/
+
+## ЗАДАЧА — Фаза 3.4: Автогенерация превью через Stability AI
+
+### Что нужно сделать:
+
+**1. Сначала прочитай эти файлы для контекста:**
+- platforms/desktop_windows/src/renderer/components/ResultGallery.tsx
+- platforms/desktop_windows/src/renderer/styles/globals.css
+- platforms/desktop_windows/src/renderer/i18n/ru.ts
+- backend/app/routers/ (посмотри что там есть)
+- backend/app/config.py
+
+**2. Добавь Stability AI ключ в конфиг**
+В backend/.env добавь строку:
+APP_STABILITY_API_KEY=your-key-here
+
+В backend/app/config.py добавь поле:
+stability_api_key: str = ""
+
+**3. Создай сервис генерации превью**
+Файл: backend/app/services/preview_service.py
+
+Логика:
+- Принимает: task_id (для получения транскрипции), или text (описание видео)
+- Берёт первые 200 символов транскрипции как prompt для Stability AI
+- POST https://api.stability.ai/v2beta/stable-image/generate/core
+- Headers: Authorization: Bearer {key}, Accept: image/*
+- Body (multipart): prompt, output_format=jpeg, aspect_ratio=16:9
+- Сохраняет превью в %APPDATA%\Transkrib\storage\results\{task_id}_preview.jpg
+- Возвращает путь к файлу
+
+Обработка ошибок:
+- Если ключ не задан → возвращает None (превью не генерируется)
+- Если API недоступен → логирует ошибку, возвращает None
+- Таймаут 30 секунд
+
+**4. Добавь endpoint в backend**
+В backend/app/routers/ добавь или обнови роутер:
+POST /preview/generate
+Body: { task_id: str }
+Response: { preview_url: str | null }
+
+Логика:
+- Загрузить транскрипцию задачи из storage
+- Вызвать preview_service.generate(text)
+- Вернуть путь к превью
+
+**5. Обнови ResultGallery.tsx**
+- После завершения обработки — автоматически запрашивать превью (POST /preview/generate)
+- Показывать превью как фоновое изображение карточки результата
+- Если превью нет — показывать заглушку (текущее поведение)
+- Добавить кнопку "Обновить превью" (иконка refresh)
+- Показывать spinner пока превью генерируется
+
+**6. Добавь i18n ключи в ru.ts, en.ts, zh.ts:**
+- preview.generating = "Генерация превью..."
+- preview.refresh = "Обновить превью"
+- preview.error = "Не удалось создать превью"
+- preview.noKey = "Stability AI ключ не настроен"
+
+### Важные ограничения:
+- Превью генерируется только если APP_STABILITY_API_KEY задан — иначе тихо пропускается
+- Не блокировать UI — генерация асинхронная в фоне
+- OneDrive workaround: если Edit падает с EEXIST — писать через C:/Users/Admin/AppData/Local/Temp/ затем копировать
+- Стиль строго через CSS переменные из globals.css
+
+### Порядок выполнения:
+1. Читай файлы для контекста
+2. preview_service.py
+3. backend endpoint
+4. ResultGallery.tsx обновление
+5. i18n ключи
+6. Проверь TypeScript типы
+
+Отчитывайся после каждого шага.

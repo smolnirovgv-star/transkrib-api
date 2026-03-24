@@ -1,0 +1,56 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО то что указано. Всё остальное оставить без изменений.
+
+ЗАДАЧА — Исправить 2 критических бага
+
+═══════════════════════════
+БАГ 1 — Видео не воспроизводится (405 ошибка)
+═══════════════════════════
+
+Файл: backend/app/routers/tasks.py (или где endpoint result)
+
+Endpoint GET /api/tasks/result/{filename}
+возвращает 405 на HEAD запросы.
+
+Исправить:
+1. Добавить methods=["GET", "HEAD"] если используется FastAPI
+2. Убедиться что возвращает StreamingResponse с:
+   - media_type="video/mp4"
+   - headers={"Accept-Ranges": "bytes", "Content-Type": "video/mp4"}
+3. Путь к файлу:
+   %APPDATA%\Transkrib\storage\results\{filename}
+
+═══════════════════════════
+БАГ 2 — UI не показывает результат после перезагрузки
+═══════════════════════════
+
+Файл: src/renderer/App.tsx
+
+После F5 (перезагрузки страницы) completed задача
+не восстанавливается в UI.
+
+Исправить — при старте приложения:
+useEffect(() => {
+  // Проверить есть ли completed задача
+  fetch('http://127.0.0.1:8000/api/tasks/')
+    .then(r => r.json())
+    .then(tasks => {
+      const completed = tasks.find(t => t.state === 'completed')
+      if (completed) {
+        // Восстановить ResultGallery с этой задачей
+        setCurrentTask(completed)
+        setScreen('result') // или как называется экран результата
+      }
+    })
+    .catch(() => {}) // игнорировать ошибки если backend недоступен
+}, [])
+
+Убедись что это работает только в dev режиме
+(isDev === true) — в Electron режиме не нужно.
+
+Ограничения:
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+- TypeScript строгий
+- Не менять другие компоненты
+
+Отчёт только по изменённым файлам.

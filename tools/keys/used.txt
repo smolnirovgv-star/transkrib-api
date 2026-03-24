@@ -1,0 +1,3 @@
+# Used keys
+# Format: key | activation_date | IP (optional)
+

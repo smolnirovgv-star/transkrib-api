@@ -1,0 +1,124 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+## ЗАДАЧА — Фаза 6: Сборка и релиз
+
+### Сначала прочитай:
+- electron-builder.yml
+- build_all.bat
+- rebuild_installer.bat
+- platforms/desktop_windows/package.json
+- backend/backend.spec
+
+═══════════════════════════════════════════
+### 6.1 — Создать иконку приложения
+═══════════════════════════════════════════
+
+Создай иконку build/icon.ico программно:
+
+- Использовать Python + Pillow для генерации
+- Дизайн: тёмный фон (#0F172A) + градиентные ножницы
+  или буква "T" в стиле логотипа
+- Размеры: 16x16, 32x32, 48x48, 64x64, 128x128, 256x256
+  (все размеры в одном .ico файле)
+- Сохранить в: platforms/desktop_windows/build/icon.ico
+- Также сохранить PNG 512x512 в: build/icon.png
+
+После создания — раскомментировать иконку в electron-builder.yml:
+  icon: build/icon.ico
+
+═══════════════════════════════════════════
+### 6.2 — Финальное тестирование
+═══════════════════════════════════════════
+
+Проверь TypeScript компиляцию:
+  cd platforms/desktop_windows && npm run typecheck
+
+Проверь что все новые компоненты импортированы в App.tsx:
+- ExportModal.tsx
+- TranscriptViewer.tsx
+- VideoHistory.tsx
+- SegmentTimeline.tsx
+- SegmentPreview.tsx
+
+Проверь все i18n ключи — нет ли отсутствующих переводов
+в en.ts и zh.ts по сравнению с ru.ts (master).
+
+Проверь импорты в backend:
+- pause_detector.py подключён в pipeline.py
+- highlight_scorer.py подключён в pipeline.py
+- preview_service.py подключён в роутере
+- transcript.py подключён в standalone_server.py
+
+Отчитайся по каждой проверке — список найденных проблем.
+Исправь все найденные ошибки.
+
+═══════════════════════════════════════════
+### 6.3 — Подготовка к пересборке
+═══════════════════════════════════════════
+
+Проверь requirements-standalone.txt:
+- Добавить если отсутствуют: pillow, requests (для Stability AI)
+- Убедиться что все новые зависимости из Фаз 3-4 включены
+
+Проверь backend.spec:
+- Все новые .py файлы должны попасть в сборку
+- hiddenimports если нужны новые модули
+
+Проверь .env файлы:
+- backend/.env → APP_ANTHROPIC_API_KEY + APP_STABILITY_API_KEY
+- platforms/desktop_windows/.env → VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+
+Покажи итоговый чеклист готовности к запуску build_all.bat.
+
+═══════════════════════════════════════════
+### 6.4 — Обновить версию приложения
+═══════════════════════════════════════════
+
+В package.json обнови версию: "version": "1.0.0"
+
+В electron-builder.yml проверь:
+- productName: "Transkrib SmartCut AI"
+- appId: "com.transkrib.smartcut"
+- нужные NSIS настройки
+
+Добавить в AppFooter.tsx динамическую версию из package.json:
+  import { version } from '../../package.json'
+  → показывать в подвале: "v1.0.0"
+
+═══════════════════════════════════════════
+### 6.5 — README для пользователя
+═══════════════════════════════════════════
+
+Создай файл: docs/USER_GUIDE_RU.md
+
+Содержание:
+1. Системные требования (Windows 10/11, 4GB RAM, 2GB диск)
+2. Установка (запустить Transkrib-Setup-1.0.0.exe)
+3. Первый запуск (Trial — 7 дней бесплатно)
+4. Активация лицензии (ввод TRSK-ключа)
+5. Как обработать видео (пошагово с описанием)
+6. Экспорт результата (форматы, настройки)
+7. Транскрипт (просмотр, скачивание TXT/SRT/JSON)
+8. Настройки (язык, тема, модель Whisper)
+9. FAQ (частые вопросы)
+10. Контакты и поддержка
+
+═══════════════════════════════════════════
+### Ограничения:
+═══════════════════════════════════════════
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/ затем копировать
+- TypeScript строгий
+- Не ломать существующие компоненты
+
+### Порядок выполнения:
+1. Читай все файлы для контекста
+2. Создай иконку (6.1)
+3. Typecheck + проверка импортов (6.2)
+4. requirements + backend.spec (6.3)
+5. Версия приложения (6.4)
+6. USER_GUIDE_RU.md (6.5)
+7. Финальный чеклист готовности к build_all.bat
+
+После выполнения всех пунктов — дай команду:
+"Проект готов к сборке. Запустите build_all.bat"

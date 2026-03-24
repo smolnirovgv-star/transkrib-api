@@ -1,0 +1,10 @@
+Выполни в терминале в корне проекта:
+
+du -sh design_reference* 2>/dev/null || dir design_reference* 2>/dev/null
+echo "---"
+ls -la | grep "design_reference"
+
+Покажи размеры папок design_reference.
+Также покажи содержимое корневого .gitignore:
+
+cat .gitignore

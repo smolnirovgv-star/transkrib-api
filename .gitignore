@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Storage (runtime data)
+backend/storage/uploads/
+backend/storage/processing/
+backend/storage/results/
+backend/storage/logs/
+
+# Docker
+docker-compose.override.yml
+
+# Electron
+platforms/desktop_windows/dist/
+platforms/desktop_mac/dist/
+platforms/desktop_windows/release/
+platforms/desktop_mac/release/
+
+# Mobile
+platforms/mobile/ios/
+platforms/mobile/android/
+platforms/mobile/.expo/
+
+# Logs
+*.log
+logs/
+
+# Дизайн-референсы (внутренние материалы, не для репозитория)
+design_reference/
+design_reference */
+design_reference*/

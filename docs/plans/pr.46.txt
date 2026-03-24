@@ -1,0 +1,44 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО AuthModal.tsx и supabaseClient.ts
+
+ЗАДАЧА — Исправить redirectTo для сброса пароля
+
+Файл: src/renderer/components/AuthModal.tsx
+
+Найди функцию handleForgot (сброс пароля).
+Там есть вызов supabase.auth.resetPasswordForEmail()
+с параметром redirectTo.
+
+Исправь redirectTo чтобы в Electron режиме
+использовался deeplink приложения:
+
+const redirectTo = window.electronAPI 
+  ? 'transkrib://reset-password'
+  : window.location.origin + '/reset-password'
+
+await supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: redirectTo
+})
+
+Файл: platforms/desktop_windows/electron/main.ts 
+(или index.ts — где настроен Electron)
+
+Добавь обработчик deeplink transkrib://:
+app.setAsDefaultProtocolClient('transkrib')
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  // Извлечь токены из URL и передать в renderer
+  mainWindow.webContents.send('deep-link', url)
+})
+
+В App.tsx добавь обработчик:
+window.electronAPI?.onDeepLink?.((url) => {
+  if (url.includes('reset-password')) {
+    // Показать форму смены пароля
+    setShowResetPassword(true)
+  }
+})
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт по изменённым файлам.

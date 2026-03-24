@@ -1,0 +1,34 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+СРОЧНАЯ ЗАДАЧА — Добавить dev bypass для Trial в backend
+
+ПРОБЛЕМА:
+В dev режиме (localhost:5174/?dev=true) показывается
+"Пробный период завершён" и блокирует обработку видео.
+reset_trial.py не помогает — backend всё равно возвращает expired.
+
+НУЖНО:
+
+1. В backend/app/trial.py или в роутере где проверяется trial —
+   добавить bypass если запрос приходит с заголовком:
+   X-Dev-Mode: true
+   ИЛИ если в config.py задана переменная DEV_MODE=true
+
+2. В backend/.env добавить:
+   APP_DEV_MODE=true
+
+3. В backend/app/config.py добавить:
+   dev_mode: bool = False  (читается из APP_DEV_MODE)
+
+4. В роутере upload/submit_url — если dev_mode=True:
+   пропускать проверку trial и лицензии полностью
+
+5. Добавить endpoint GET /api/dev/status (только при dev_mode=True):
+   возвращает { dev_mode: true, trial_bypassed: true }
+
+6. Перезапусти standalone_server.py после изменений
+
+После перезапуска проверь:
+  curl http://127.0.0.1:8000/api/dev/status
+  Должен вернуть { dev_mode: true }

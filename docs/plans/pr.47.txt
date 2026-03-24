@@ -1,0 +1,54 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ЗАДАЧА — Запоминать сессию пользователя (автологин)
+
+Файл: src/renderer/lib/supabaseClient.ts
+
+Проблема: сессия Supabase не сохраняется между
+запусками приложения в Electron.
+
+Исправь настройки Supabase клиента:
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    storageKey: 'transkrib-auth-token',
+    storage: {
+      getItem: (key) => {
+        try {
+          return localStorage.getItem(key)
+        } catch { return null }
+      },
+      setItem: (key, value) => {
+        try {
+          localStorage.setItem(key, value)
+        } catch {}
+      },
+      removeItem: (key) => {
+        try {
+          localStorage.removeItem(key)
+        } catch {}
+      }
+    },
+    autoRefreshToken: true,
+    detectSessionInUrl: false
+  }
+})
+
+Файл: src/renderer/hooks/useAuth.ts
+
+Убедись что при старте приложения вызывается:
+supabase.auth.getSession()
+
+И подписка на изменения сессии:
+supabase.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    setUser(session.user)
+  } else {
+    setUser(null)
+  }
+})
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

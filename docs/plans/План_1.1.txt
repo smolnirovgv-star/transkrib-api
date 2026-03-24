@@ -1,0 +1,353 @@
+# Transkrib SmartCut AI — Project Context
+
+> Вставляй этот файл в начало каждого нового чата с Claude Code.
+> Дата последнего обновления: 2026-03-14
+
+---
+
+## 1. Что такое проект
+
+**Transkrib SmartCut AI** — десктопное приложение для Windows (Electron + FastAPI), которое:
+- принимает длинное видео (файл или YouTube URL)
+- транскрибирует через Whisper
+- выбирает ключевые моменты через Claude API
+- рендерит MP4-резюме с субтитрами через FFmpeg
+
+Целевая аудитория: люди, которые работают с вебинарами, интервью, подкастами.
+
+---
+
+## 2. Структура проекта
+
+```
+Transkrib_SmartCut_AI/
+├── backend/                         ← Python FastAPI сервер
+│   ├── standalone_server.py         ← точка входа PyInstaller (backend.exe)
+│   ├── backend.spec                 ← PyInstaller spec
+│   ├── requirements-standalone.txt
+│   ├── app/
+│   │   ├── config.py                ← Settings (pydantic), пути к storage
+│   │   ├── license.py               ← LicenseManager (офлайн HMAC проверка)
+│   │   ├── trial.py                 ← TrialManager (мульти-слойная защита)
+│   │   ├── fingerprint.py           ← сбор hardware fingerprint
+│   │   ├── pipeline.py              ← основной пайплайн: Whisper→pause_detector→highlight_scorer→FFmpeg
+│   │   ├── models/                  ← Pydantic схемы
+│   │   ├── routers/
+│   │   │   └── transcript.py        ← GET /api/transcript/{filename} + /download
+│   │   ├── services/
+│   │   │   ├── pause_detector.py    ← анализ пауз > 0.8 сек (Фаза 4.1)
+│   │   │   ├── highlight_scorer.py  ← оценка фраз 1-10 через Claude API (Фаза 4.2)
+│   │   │   ├── preview_service.py   ← генерация превью через Stability AI (Фаза 3.4)
+│   │   │   └── ...
+│   │   ├── workers/                 ← standalone_tasks.py (threading, без Celery)
+│   │   └── websocket/               ← WebSocket progress push
+│   └── .env                         ← APP_ANTHROPIC_API_KEY, APP_STABILITY_API_KEY
+│
+├── platforms/
+│   └── desktop_windows/             ← Electron app (основная платформа)
+│       ├── src/
+│       │   ├── main/
+│       │   │   ├── index.ts         ← IPC handlers + app:saveTranscript
+│       │   │   └── backend.ts       ← запуск backend.exe как subprocess
+│       │   └── renderer/
+│       │       ├── App.tsx
+│       │       ├── theme.tsx
+│       │       ├── i18n/            ← ru / en / zh
+│       │       ├── components/
+│       │       │   ├── TitleBar.tsx
+│       │       │   ├── AppHeader.tsx
+│       │       │   ├── AppFooter.tsx
+│       │       │   ├── SetupWizard.tsx
+│       │       │   ├── BackendStartup.tsx
+│       │       │   ├── DropZone.tsx
+│       │       │   ├── UrlInput.tsx
+│       │       │   ├── HowItWorks.tsx
+│       │       │   ├── Pricing.tsx
+│       │       │   ├── AuthModal.tsx
+│       │       │   ├── StepCards.tsx
+│       │       │   ├── ProcessingProgress.tsx
+│       │       │   ├── ResultGallery.tsx    ← кнопки Экспорт + 📄 Транскрипт ▾
+│       │       │   ├── ExportModal.tsx      ← настройки экспорта видео (Фаза 3.3)
+│       │       │   ├── TranscriptViewer.tsx ← просмотр транскрипта (Фаза 4.6)
+│       │       │   ├── VideoHistory.tsx     ← история обработок (Фаза 3.1)
+│       │       │   ├── SettingsPanel.tsx
+│       │       │   └── DemoModal.tsx
+│       │       ├── hooks/
+│       │       │   ├── useAuth.ts
+│       │       │   ├── useTaskProgress.ts
+│       │       │   └── useWebSocket.ts
+│       │       ├── lib/
+│       │       │   └── supabaseClient.ts
+│       │       └── styles/
+│       │           └── globals.css
+│       ├── electron-builder.yml
+│       └── package.json
+│
+├── supabase/
+│   └── migrations/
+│       └── 20260313140631_create_user_licenses.sql  ← применена ✅
+│
+├── tools/
+│   ├── keygen.py
+│   ├── generate_keys.bat
+│   └── reset_trial.py
+│
+├── build_all.bat
+└── rebuild_installer.bat
+```
+
+---
+
+## 3. Технологический стек
+
+| Слой | Технология |
+|------|-----------|
+| Backend | Python 3.11, FastAPI, Uvicorn, threading |
+| Транскрипция | OpenAI Whisper (локально, модель `base` или `small`) |
+| AI-анализ | Anthropic Claude API |
+| Превью | Stability AI API (Stable Image Core) |
+| Видео | FFmpeg (bundled), yt-dlp (bundled) |
+| Desktop shell | Electron 28, TypeScript |
+| UI | React 18, TypeScript, CSS (без UI-фреймворка) |
+| Auth | Supabase (email/password) |
+| Лицензии | Офлайн HMAC-подпись (`TRSK-PLAN-XXXX-XXXX-HMAC8`) |
+| i18n | Самописный контекст (ru/en/zh) |
+| Тема | CSS vars + `data-theme` (light/dark) |
+| Сборка | PyInstaller (backend.exe) + electron-builder (NSIS) |
+
+---
+
+## 4. Ключевые архитектурные решения
+
+### Pipeline обработки видео (актуальный)
+```
+Видео/URL
+    ↓ Audio extraction (ffmpeg — сначала аудио для ускорения)
+    ↓ Whisper → сегменты с timestamps
+    ↓ pause_detector → фразы, разбитые по паузам > 0.8 сек
+    ↓ highlight_scorer → оценка каждой фразы 1-10 (Claude API)
+    ↓ Фильтр score ≥ 6 + группировка в клипы 10-30 сек
+    ↓ Приветствие/прощание — всегда включены (первые/последние 30 сек)
+    ↓ Параллельный FFmpeg → нарезка клипов
+    ↓ Результат: MP4 + _segments.json (кэш)
+```
+
+### Transcript export (Фаза 4.6)
+```
+ResultGallery → кнопка [📄 Транскрипт ▾]
+    ├── 👁 Смотреть в приложении → TranscriptViewer.tsx
+    ├── ⬇ Скачать .TXT  (чистый текст)
+    ├── ⬇ Скачать .SRT  (субтитры с таймкодами)
+    └── ⬇ Скачать .JSON (segments + scores)
+
+TranscriptViewer:
+    - Фильтр: Все фразы / Только важные ≥6
+    - Поиск по тексту в реальном времени
+    - Цветовые полосы: зелёная (8-10) / жёлтая (5-7) / серая (1-4)
+    - Кнопки скачать внизу
+    - IPC: app:saveTranscript → диалог сохранения файла
+```
+
+### Preview generation (Фаза 3.4)
+```
+После обработки → POST /preview/generate → preview_service.py
+    → Stability AI API (первые 200 символов транскрипта как prompt)
+    → сохранение {task_id}_preview.jpg
+    → 3 состояния в карточке: AI-превью / spinner / заглушка
+    → кнопка ↻ refresh при hover
+```
+
+### Export (Фаза 3.3)
+```
+ResultGallery → [⬆ Экспорт] → ExportModal.tsx
+    Настройки: формат (MP4/MKV/WebM), качество (CRF 18/23/28),
+               разрешение (Оригинал/1080p/720p/480p),
+               субтитры (встроить/SRT/оба/нет),
+               папка сохранения
+    → POST /export → FFmpeg
+```
+
+### Supabase Auth
+- Проект: `aakxqjpyikhjzkfvwppu.supabase.co`
+- `.env`: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- Email confirmation: **отключён**
+- Таблица `user_licenses` создана и применена ✅
+- `useAuth()` hook → user/session/signOut
+
+### Trial система
+- 7 дней, 3 видео/день, до 30 минут на видео
+- Мульти-слойная защита: файл + HKCU + HKLM registry
+- HMAC-подпись на основе MachineGuid
+
+### Лицензионная система
+- Формат: `TRSK-{PLAN}-{XXXX}-{XXXX}-{HMAC8}`
+- Планы: BASE (10 дней), STND (30 дней), PREM (365 дней)
+- Офлайн HMAC-SHA256 проверка
+
+---
+
+## 5. UI / UX
+
+### Структура экранов
+```
+Screen 0: Главная      ← Hero + Upload (DropZone / UrlInput)
+Screen 1: Как работает ← HowItWorks (3 шага)
+Screen 2: Цены         ← Pricing (Trial / Base / Standard / Pro)
+```
+
+### Состояния приложения
+```
+BackendStartup → SetupWizard (лицензия/trial) → Главная
+    ↓ загрузка видео
+Processing → ResultGallery
+    ↓ кнопки: Смотреть | Экспорт | 📄 Транскрипт ▾ | ↻ Превью
+TranscriptViewer (отдельный экран, кнопка Назад)
+```
+
+### Тарифы (Pricing)
+4 плана: Trial (бесплатно, 7 дней), Base ($5), Standard ($19/мес), Pro ($99/год)
+
+---
+
+## 6. Известные ограничения и gotchas
+
+### OneDrive EEXIST
+Файлы проекта на OneDrive. Инструмент Edit иногда падает с EEXIST.
+**Workaround**: писать в `C:/Users/Admin/AppData/Local/Temp/`, затем `shutil.copy2()`.
+
+### Supabase в Electron
+CSP в `index.html` разрешает `https://*.supabase.co` и `wss://*.supabase.co` ✅
+
+### TypeScript TranslationKeys
+Использовать `DeepString<T>` utility type в `ru.ts`.
+
+### PyInstaller + Windows 11
+- Антивирус может блокировать backend.exe
+- HKLM запись требует прав администратора при первом запуске
+
+---
+
+## 7. Текущий статус (2026-03-14)
+
+### ✅ ФАЗА 1 — ЗАВЕРШЕНА (Стабилизация)
+- Встроенный плеер результата
+- Переключатель тем день/ночь
+- Кнопки навигации вперёд/назад
+
+### ✅ ФАЗА 2 — ЗАВЕРШЕНА (Авторизация)
+- Supabase проект создан и настроен
+- Таблицы и RLS политики применены
+- Auth Modal (логин/регистрация/forgot)
+- Гибридный режим ключ + аккаунт
+- Синхронизация лицензии с аккаунтом
+- CSP исправлен для Supabase
+
+### ✅ ФАЗА 3 — ЗАВЕРШЕНА (Основные функции)
+- 3.1 История видео (VideoHistory.tsx)
+- 3.2 Предпросмотр до обработки
+- 3.3 Экспорт с настройками качества (ExportModal.tsx)
+- 3.4 Автогенерация превью Stability AI (preview_service.py)
+
+### ✅ ФАЗА 4 — ЗАВЕРШЕНА (Алгоритм AI)
+- 4.1 Pause detection (pause_detector.py, порог 0.8 сек)
+- 4.2 Оценка важности фраз 1-10 (highlight_scorer.py, Claude API)
+        + группировка клипов 10-30 сек
+        + приветствие/прощание всегда включены
+        + итоговый ролик 20-60% от оригинала
+- 4.3 (реализовано в 4.2)
+- 4.4 Параллельная нарезка FFmpeg + audio extraction first
+- 4.5 Кэш транскрипции (_segments.json)
+- 4.6 Транскрипт: просмотр (TranscriptViewer) + экспорт TXT/SRT/JSON
+
+### 🔲 ФАЗА 5 — СЛЕДУЮЩАЯ (Дизайн)
+- 5.1 Hero секция + кнопки
+- 5.2 Экран "Как это работает" (улучшение)
+- 5.3 Экран цен (4 тарифа)
+- 5.4 Шапка и подвал в стиле Google
+- 5.5 Интеграция нового дизайна
+        + Timeline — визуальная шкала сегментов
+        + SegmentPreview — предпросмотр каждого клипа
+
+### 🔲 ФАЗА 6 — Сборка и релиз
+- 6.1 Финальное тестирование
+- 6.2 Пересборка build_all.bat (backend.exe устарел после Фазы 4)
+- 6.3 Создать иконку build/icon.ico
+- 6.4 Тестирование на чистой машине (fresh install)
+- 6.5 Документация для пользователя
+
+---
+
+## 8. Незакрытые вопросы
+
+1. **Пересборка backend.exe** — после Фазы 4 (pause_detector, highlight_scorer)
+   нужна пересборка: `build_all.bat`
+
+2. **Иконка приложения** — `build/icon.ico` не создан
+
+3. **macOS платформа** — scaffold есть, не разрабатывалась
+
+4. **Тестирование на чистой машине** — не проверяли fresh install
+
+---
+
+## 9. Следующие приоритеты (Фаза 5)
+
+1. Hero секция — улучшить главный экран (визуал, анимации, CTA кнопки)
+2. Timeline — визуальная шкала найденных сегментов
+3. SegmentPreview — предпросмотр каждого клипа до экспорта
+4. Обновить HowItWorks и Pricing под новый дизайн
+5. Пересборка backend.exe (build_all.bat)
+
+---
+
+## 10. Команды разработчика
+
+```bash
+# Dev (browser mode)
+cd platforms/desktop_windows && npm run dev
+
+# Typecheck
+cd platforms/desktop_windows && npm run typecheck
+
+# Генерация лицензионных ключей
+cd tools && python keygen.py
+
+# Сброс trial
+python tools/reset_trial.py
+
+# Полная пересборка релиза (нужна после Фазы 4!)
+build_all.bat
+
+# Только Electron installer
+rebuild_installer.bat
+```
+
+---
+
+## 11. Supabase проект
+
+- **URL**: `https://aakxqjpyikhjzkfvwppu.supabase.co`
+- **Dashboard**: `https://supabase.com/dashboard/project/aakxqjpyikhjzkfvwppu`
+- **Auth Users**: `/auth/users`
+- **SQL Editor**: `/sql`
+- **API Settings**: `/settings/api`
+- Email confirmation: **отключён** ✅
+- Таблица user_licenses: **применена** ✅
+
+---
+
+## 12. API ключи (.env файлы)
+
+### backend/.env
+```
+APP_ANTHROPIC_API_KEY=sk-ant-...
+APP_STABILITY_API_KEY=sk-...        ← для генерации превью
+APP_WHISPER_MODEL=small
+APP_CLAUDE_MODEL=claude-sonnet-4-5-20250929
+```
+
+### platforms/desktop_windows/.env (Vite)
+```
+VITE_SUPABASE_URL=https://aakxqjpyikhjzkfvwppu.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+```

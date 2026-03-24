@@ -1,0 +1,34 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО standalone_tasks_router.py. Всё остальное не трогать.
+
+ЗАДАЧА — Зарегистрировать DELETE endpoint
+
+Файл: backend/app/routers/standalone_tasks_router.py
+
+Endpoint DELETE /api/tasks/result/{filename} возвращает 405.
+Значит он не зарегистрирован правильно.
+
+Прочитай файл и найди где добавлен @router.delete.
+Если не найден — добавь:
+
+import os
+from fastapi import HTTPException
+
+@router.delete('/result/{filename}')
+async def delete_result(filename: str):
+    appdata = os.environ.get('APPDATA', '')
+    filepath = os.path.join(appdata, 'Transkrib', 'storage', 'results', filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+        return {'deleted': filename, 'status': 'ok'}
+    else:
+        raise HTTPException(status_code=404, detail='File not found: ' + filename)
+
+Также удали запись из tasks при удалении файла.
+
+После исправления перезапусти backend.
+Проверь curl: curl -X DELETE http://127.0.0.1:8000/api/tasks/result/test.mp4
+Должен вернуть 404 (файл не найден) а не 405.
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

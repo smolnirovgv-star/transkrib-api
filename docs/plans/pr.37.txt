@@ -1,0 +1,41 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО BackendStartup.tsx. Всё остальное не трогать.
+
+КРИТИЧЕСКИЙ БАГ — BackendStartup не пропускается несмотря на исправления
+
+Прочитай ТОЧНОЕ содержимое файла:
+platforms/desktop_windows/src/renderer/components/BackendStartup.tsx
+
+Нам нужно чтобы компонент СРАЗУ вызывал onReady() и возвращал null
+когда window.electronAPI не определён.
+
+Покажи мне строки 1-30 файла — посмотрим что там реально написано.
+Затем замени ВСЁ содержимое файла на эту минимальную версию:
+
+import { useEffect } from 'react'
+
+interface Props {
+  onReady: () => void
+}
+
+export default function BackendStartup({ onReady }: Props) {
+  const isDev = (
+    new URLSearchParams(window.location.search).get('dev') === 'true' ||
+    localStorage.getItem('transkrib_dev_mode') === 'true' ||
+    typeof window.electronAPI === 'undefined'
+  )
+
+  useEffect(() => {
+    if (isDev) {
+      onReady()
+    }
+  }, [])
+
+  if (isDev) return null
+
+  // Оригинальный код для Electron режима ниже...
+  // (оставь весь остальной код компонента без изменений)
+}
+
+ВАЖНО: Не использовать backticks. Только одинарные кавычки.
+Отчёт — покажи строки 1-25 после изменения.

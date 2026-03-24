@@ -1,0 +1,40 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА — СРОЧНО: BackendStartup не обходится в dev режиме
+
+ПРОБЛЕМА:
+При открытии localhost:5173/?dev=true приложение
+застревает на экране "Инициализация AI-движка"
+и бесконечно ждёт backend.
+
+Файл: src/renderer/components/BackendStartup.tsx
+
+Найди условие browser-mode fallback.
+Должно быть примерно так:
+  if (!window.electronAPI) {
+    onReady()  // сразу вызвать
+    return
+  }
+
+Проверь почему это не срабатывает.
+Возможные причины:
+- условие написано неверно
+- window.electronAPI определён даже в браузере
+- dev bypass не проверяется
+
+ИСПРАВЛЕНИЕ:
+Добавь проверку в начало компонента:
+
+const isDev = new URLSearchParams(window.location.search).get('dev') === 'true'
+  || localStorage.getItem('transkrib_dev_mode') === 'true'
+
+if (isDev || !window.electronAPI) {
+  // Сразу вызвать onReady() без ожидания backend
+  useEffect(() => { onReady() }, [])
+  return <div>Загрузка...</div> // или null
+}
+
+После исправления проверь:
+localhost:5173/?dev=true → должен сразу показать главный экран
+БЕЗ ожидания backend.

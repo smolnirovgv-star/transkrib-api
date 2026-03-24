@@ -1,0 +1,21 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО AppFooter.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Добавить ссылку на Telegram канал
+
+Файл: src/renderer/components/AppFooter.tsx
+(или где находятся кнопки TG/YT/VK в подвале)
+
+Найди кнопку/иконку Telegram (TG).
+Замени href или onClick на:
+https://t.me/video_transkrib
+
+Убедись что ссылка открывается в браузере:
+if (window.electronAPI && window.electronAPI.openExternal) {
+  window.electronAPI.openExternal('https://t.me/video_transkrib')
+} else {
+  window.open('https://t.me/video_transkrib', '_blank')
+}
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

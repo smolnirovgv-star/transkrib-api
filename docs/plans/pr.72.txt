@@ -1,0 +1,33 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ЗАДАЧА — Загрузить backend на GitHub
+
+1. Проверь есть ли git репозиторий:
+   cd C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI
+   git status
+
+2. Если нет — инициализируй:
+   git init
+   git remote add origin https://github.com/ТВОЙ_АККАУНТ/transkrib-api.git
+
+3. Создай .gitignore в папке backend если нет:
+   __pycache__/
+   *.pyc
+   .env
+   dist/
+   storage/
+   *.pt
+   .cache/
+
+4. Добавь и закоммить только backend папку:
+   git add backend/
+   git add backend/render.yaml
+   git add backend/requirements.txt
+   git commit -m "feat: add Render deployment config"
+
+5. Покажи текущий статус git:
+   git remote -v
+   git log --oneline -3
+
+Отчёт: есть ли уже репозиторий и remote URL.

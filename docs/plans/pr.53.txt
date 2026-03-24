@@ -1,0 +1,9 @@
+Отправьте в Claude Code:
+
+Запусти build_all.bat
+Это финальная сборка со всеми исправлениями:
+- ResultGallery.tsx (file:// видео путь)
+- BackendStartup.tsx (isDev bypass)
+- transcript.py (SRT кодировка)
+- Pricing.tsx (цены в ₽)
+- AppFooter.tsx (ссылка Условия)

@@ -1,0 +1,23 @@
+Контекст: Transkrib SmartCut AI
+ЗАДАЧА — Загрузить backend на GitHub
+
+Выполни последовательно в папке backend:
+
+cd C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\backend
+
+git remote add origin https://github.com/smolnirovgv-star/transkrib-api.git
+git branch -M main
+git push -u origin main
+
+Если просит авторизацию — нужен Personal Access Token.
+Создай его по ссылке:
+https://github.com/settings/tokens/new
+- Note: transkrib-deploy
+- Expiration: 90 days
+- Scope: поставь галочку на repo
+
+Скопируй токен и используй вместо пароля при git push.
+
+После успешного push отчитайся:
+- сколько файлов загружено
+- URL репозитория

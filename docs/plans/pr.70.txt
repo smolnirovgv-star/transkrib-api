@@ -1,0 +1,40 @@
+Контекст: Transkrib SmartCut AI
+ЗАДАЧА — Подготовить backend для деплоя на Render.com
+
+1. Создай файл: backend/render.yaml
+
+services:
+  - type: web
+    name: transkrib-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python standalone_server.py
+    envVars:
+      - key: APP_ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_WHISPER_MODEL
+        value: tiny
+      - key: PORT
+        fromService:
+          type: web
+          name: transkrib-api
+          property: port
+
+2. Создай файл: backend/requirements.txt
+   если его ещё нет — добавить все зависимости:
+   fastapi
+   uvicorn
+   faster-whisper
+   anthropic
+   yt-dlp
+   ffmpeg-python
+   python-multipart
+   supabase
+
+3. Проверь что standalone_server.py
+   читает PORT из переменных окружения:
+   port = int(os.environ.get('PORT', 8000))
+   uvicorn.run(app, host='0.0.0.0', port=port)
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт по созданным файлам.

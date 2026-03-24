@@ -1,0 +1,97 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+
+ФИНАЛЬНЫЕ ИСПРАВЛЕНИЯ ПЕРЕД СБОРКОЙ — 4 бага
+
+═══════════════════════════════════════════
+БАГ 1 — Кириллица в имени файла ломает скачивание
+═══════════════════════════════════════════
+
+Файл: backend/app/routers/transcript.py
+
+Ошибка: 'latin-1' codec can't encode characters
+
+При скачивании SRT/JSON/HTML файлов с кириллическим
+именем — backend падает с ошибкой кодировки.
+
+Найди где формируется Content-Disposition заголовок.
+Исправь на RFC 5987 совместимый формат:
+
+# Было (ошибка):
+headers = {'Content-Disposition': 'attachment; filename=' + filename}
+
+# Стало (исправление):
+import urllib.parse
+safe_name = urllib.parse.quote(filename.encode('utf-8'))
+headers = {
+  'Content-Disposition': 'attachment; filename*=UTF-8\'\'' + safe_name,
+  'Content-Type': 'application/octet-stream'
+}
+
+Применить для ВСЕХ форматов: txt, srt, json, html
+
+═══════════════════════════════════════════
+БАГ 2 — Цены в $ → нужно ₽
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/PricingSection.tsx
+(или где находятся карточки тарифов)
+
+Найди все цены и замени:
+  $5   → 450 ₽
+  $19  → 1 700 ₽
+  $99  → 8 900 ₽
+  /мес → /мес (оставить)
+  /год → /год (оставить)
+
+Также замени валюту в i18n файлах если есть:
+  src/renderer/i18n/ru.ts
+  src/renderer/i18n/en.ts (оставить $ для EN)
+  src/renderer/i18n/zh.ts (оставить $ для ZH)
+
+═══════════════════════════════════════════
+БАГ 3 — Ссылка "Условия" никуда не ведёт
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/AppFooter.tsx
+(или где находятся ссылки внизу страницы)
+
+Найди кнопку/ссылку "Условия".
+Замени на открытие в браузере:
+
+const handleTerms = () => {
+  const url = 'https://trans-smarttv.tilda.ws/terms'
+  if (window.electronAPI && window.electronAPI.openExternal) {
+    window.electronAPI.openExternal(url)
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
+Также проверь ссылку "Конфиденциальность" — там уже
+работает внутренняя страница — оставить как есть.
+
+═══════════════════════════════════════════
+БАГ 4 — Видео в Electron (file:// путь)
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Уже исправлено в предыдущей сессии.
+Проверь что getVideoUrl корректно:
+1. Если electronAPI — использует file:// URL
+2. Если браузер — использует HTTP URL
+3. Убедись что нет повреждённых символов
+
+═══════════════════════════════════════════
+После исправлений:
+═══════════════════════════════════════════
+
+1. Проверь TypeScript: npx tsc --noEmit
+2. Исправь все ошибки TypeScript
+3. Запусти: build_all.bat
+4. Отчёт по изменённым файлам + результат сборки

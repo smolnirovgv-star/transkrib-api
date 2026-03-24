@@ -1,0 +1,48 @@
+Контекст: Transkrib SmartCut AI
+ЗАДАЧА — Исправить структуру для деплоя на Render
+
+Проблема: Render не находит requirements.txt
+Файл находится в backend/requirements.txt
+Но Render ищет его в корне репозитория.
+
+1. Скопируй requirements.txt в корень репозитория:
+   cd C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI
+   copy backend\requirements.txt requirements.txt
+
+2. Скопируй standalone_server.py в корень:
+   copy backend\standalone_server.py standalone_server.py
+
+3. НЕТ — лучше указать Root Directory в Render.
+   Сделай это через git — обнови render.yaml:
+
+   В файле backend/render.yaml добавь:
+   rootDir: .
+   
+   Или проще — создай в КОРНЕ проекта файл render.yaml:
+
+Создай файл:
+C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\render.yaml
+
+Содержимое:
+services:
+  - type: web
+    name: transkrib-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python standalone_server.py
+    envVars:
+      - key: HOST
+        value: '0.0.0.0'
+      - key: APP_WHISPER_MODEL
+        value: tiny
+      - key: APP_ANTHROPIC_API_KEY
+        sync: false
+
+4. Добавь и запушь:
+   git add render.yaml
+   git add backend/render.yaml
+   git commit -m "fix: add root render.yaml with rootDir"
+   git push origin main
+
+Отчёт: успешно ли запушились изменения.

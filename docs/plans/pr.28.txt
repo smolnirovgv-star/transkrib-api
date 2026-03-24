@@ -1,0 +1,263 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+## БОЛЬШОЕ ЗАДАНИЕ — Дизайн + Баги + Новые функции
+
+Сначала прочитай:
+- platforms/desktop_windows/src/renderer/styles/globals.css
+- platforms/desktop_windows/src/renderer/App.tsx
+- platforms/desktop_windows/src/renderer/components/ResultGallery.tsx
+- platforms/desktop_windows/src/renderer/components/ProcessingProgress.tsx
+- platforms/desktop_windows/src/renderer/components/ExportModal.tsx
+- platforms/desktop_windows/src/renderer/components/TranscriptViewer.tsx
+- platforms/desktop_windows/src/renderer/i18n/ru.ts
+- backend/app/pipeline.py
+- backend/app/services/highlight_scorer.py
+
+═══════════════════════════════════════════
+### ЧАСТЬ 1 — ДИЗАЙН-АУДИТ (globals.css)
+═══════════════════════════════════════════
+
+Исправь светлую тему (data-theme="light"):
+
+1. КОНТРАСТ ЦВЕТОВ (WCAG AA минимум 4.5:1):
+   --text-primary: #0F172A      (не менять)
+   --text-secondary: #334155    (усилить контраст)
+   --text-muted: #64748B        (проверить на фоне)
+   --bg-primary: #FFFFFF
+   --bg-secondary: #F8FAFC
+   --accent: #7C3AED
+
+2. ТИПОГРАФИКА — единый стиль:
+   - Заголовки h1: 28px, weight 700
+   - Заголовки h2: 22px, weight 600
+   - Текст body: 15px, weight 400, line-height 1.6
+   - Подписи/labels: 12px, weight 500, uppercase, letter-spacing 0.05em
+   - Минимальный размер текста везде: 12px (не менее!)
+   - Во всплывающих окнах минимум: 13px
+
+3. КАРТОЧКИ — единый стиль:
+   - border-radius: 12px (везде одинаково)
+   - box-shadow в светлой теме: 0 2px 8px rgba(0,0,0,0.08)
+   - border: 1px solid rgba(0,0,0,0.08)
+   - padding: 20px
+
+4. КНОПКИ:
+   - btn-primary: bg #7C3AED, color #fff, hover #6D28D9
+   - btn-secondary: bg transparent, border 1.5px solid #7C3AED, color #7C3AED
+   - border-radius: 8px
+   - padding: 10px 20px
+   - font-size: 14px, weight 600
+
+5. ВСПЛЫВАЮЩИЕ ОКНА (модалы):
+   - Увеличить на 25% (min-width: 520px вместо 420px)
+   - Минимальный текст: 13px
+   - Заголовок модала: 18px, weight 600
+   - padding: 28px
+
+═══════════════════════════════════════════
+### ЧАСТЬ 2 — ЛОГОТИП SVG
+═══════════════════════════════════════════
+
+Создай файл: src/renderer/assets/logo.svg
+
+Стилизованный логотип — геральдический щит с ножницами:
+
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- Геральдический щит -->
+  <path d="M24 2 L44 10 L44 26 C44 36 34 44 24 46 C14 44 4 36 4 26 L4 10 Z"
+        fill="#7C3AED" stroke="#5B21B6" stroke-width="1.5"/>
+  
+  <!-- Буква T стилизованная -->
+  <rect x="14" y="14" width="20" height="3" rx="1.5" fill="white"/>
+  <rect x="21.5" y="17" width="5" height="16" rx="2" fill="white"/>
+  
+  <!-- Маленькие ножницы справа снизу -->
+  <circle cx="35" cy="36" r="3" fill="#C4B5FD" opacity="0.8"/>
+  <path d="M33 38 L37 32" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M35 38 L35 32" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
+
+Обнови TitleBar.tsx и AppHeader.tsx:
+- Показывать logo.svg рядом с текстом "Transkrib"
+- Размер иконки: 28px × 28px
+- Добавить CSS: .logo-icon { width: 28px; height: 28px; margin-right: 8px; }
+
+═══════════════════════════════════════════
+### ЧАСТЬ 3 — БАГИ (критические)
+═══════════════════════════════════════════
+
+БАГ А — Прогресс загрузки файла/ссылки:
+
+В ProcessingProgress.tsx или StepCards.tsx:
+- Добавить таймер который считает секунды с начала каждого шага
+- Формат: "Скачивание... 00:45"
+- Добавить анимированный прогресс-бар для каждого шага
+- Цвета: серый (ожидание) → синий анимированный (в процессе) → зелёный (готово)
+- При переходе между шагами — плавная анимация
+
+БАГ Б — Видео не запускается в ResultGallery:
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Проблема: video src не формируется правильно в браузерном режиме.
+
+Исправление:
+```typescript
+// В браузерном режиме — использовать backend URL
+const getVideoUrl = (filename: string) => {
+  if (window.electronAPI?.getResultPath) {
+    return window.electronAPI.getResultPath(filename)
+  }
+  // Browser mode — прямой URL к backend
+  return `http://127.0.0.1:8000/api/tasks/result/${filename}`
+}
+```
+
+Добавить endpoint в backend если нет:
+GET /api/tasks/result/{filename}
+→ StreamingResponse видеофайла из storage/results/
+
+БАГ В — Транскрипт не отображается и не скачивается:
+
+Файл: src/renderer/components/TranscriptViewer.tsx
+
+Проблема: компонент не получает данные от backend.
+
+Исправь:
+1. При открытии TranscriptViewer — делать GET /api/transcript/{filename}
+2. Показывать loading spinner пока данные грузятся
+3. Кнопки скачивания — использовать прямой URL:
+   `http://127.0.0.1:8000/api/transcript/{filename}/download?format=txt`
+4. Открывать URL в новой вкладке через window.open() или electronAPI
+
+БАГ Г — ExportModal в светлой теме не контрастный:
+
+Файл: src/renderer/components/ExportModal.tsx
+
+В светлой теме:
+- Все label: color #0F172A (не серый!)
+- Радио-кнопки и чекбоксы: accent-color #7C3AED
+- Фон секций: #F1F5F9
+- Текст опций: font-size 14px, color #1E293B
+- Заголовки секций: font-size 12px, weight 600, color #64748B, uppercase
+- border между секциями: 1px solid #E2E8F0
+
+═══════════════════════════════════════════
+### ЧАСТЬ 4 — ТЗ ПОЛЬЗОВАТЕЛЯ ПЕРЕД ОБРАБОТКОЙ
+═══════════════════════════════════════════
+
+Создай компонент: src/renderer/components/TaskBriefModal.tsx
+
+Это модальное окно которое открывается ПОСЛЕ выбора файла/ссылки
+НО ДО нажатия кнопки "Обработать".
+
+Структура:
+┌──────────────────────────────────────────────┐
+│  🎯 Настройте обработку видео         [×]    │
+├──────────────────────────────────────────────┤
+│  💡 Подсказка (серый блок сверху):           │
+│  "Опишите что важно сохранить в видео.       │
+│  Например: ключевые выводы, советы,          │
+│  определённые темы или спикеры,              │
+│  важные моменты которые нельзя пропустить"   │
+├──────────────────────────────────────────────┤
+│  [textarea — 4 строки]                       │
+│  placeholder: "Например: сохранить все       │
+│  практические советы и примеры,              │
+│  убрать вводную часть..."                    │
+│                                              │
+│  Ключевые слова (через запятую):             │
+│  [input: "продажи, конверсия, ROI"]          │
+│                                              │
+│  Стиль нарезки:                              │
+│  ○ Авто (рекомендуется)                     │
+│  ○ Только практика (советы и примеры)       │
+│  ○ Только теория (концепции и объяснения)   │
+│  ○ Новостной (факты и выводы)               │
+├──────────────────────────────────────────────┤
+│  [Пропустить]              [▶ Начать обработку] │
+└──────────────────────────────────────────────┘
+
+При нажатии "Начать обработку":
+- Сохранить brief в state
+- Передать в pipeline как user_brief
+- Передать в highlight_scorer промпт
+
+В highlight_scorer.py — добавить user_brief в промпт Claude:
+```python
+user_context = ""
+if user_brief:
+    user_context = f"""
+Дополнительные пожелания пользователя:
+{user_brief.get('description', '')}
+
+Ключевые слова для приоритета: {user_brief.get('keywords', '')}
+
+Стиль нарезки: {user_brief.get('style', 'auto')}
+
+ВАЖНО: Учитывай эти пожелания при оценке важности фраз.
+Фразы содержащие ключевые слова получают +2 к оценке.
+"""
+```
+
+Возврат на начало с сохранением:
+- В ResultGallery добавить кнопку "Переобработать"
+- Открывает TaskBriefModal с предыдущим brief
+- Предыдущий результат сохраняется как {filename}_v1.mp4
+- Новый результат как {filename}_v2.mp4
+- Показывать оба варианта в ResultGallery
+
+═══════════════════════════════════════════
+### ЧАСТЬ 5 — ОЧИСТКА ФАЙЛОВ
+═══════════════════════════════════════════
+
+1. В папке release/ оставить только последнюю сборку:
+   - Удалить все кроме Transkrib SmartCut AI-Setup-1.0.0-x64.exe
+   - Оставить: x64 версию (самая актуальная)
+
+2. Найти и удалить временные файлы:
+   - *.pyc файлы в backend/
+   - __pycache__ папки
+   - .DS_Store файлы
+   - node_modules не трогать
+
+3. Проверить дублирующиеся компоненты:
+   - Если есть старые версии компонентов (*_old.tsx, *_backup.tsx) — удалить
+
+═══════════════════════════════════════════
+### МОИ ИДЕИ (пункт 4) — добавить тоже:
+═══════════════════════════════════════════
+
+Идея 1 — Умный предпросмотр транскрипта:
+В TaskBriefModal показывать первые 5 найденных
+ключевых фраз из транскрипта ДО обработки —
+чтобы пользователь видел о чём видео
+
+Идея 2 — Оценка качества результата:
+После обработки показывать:
+- Сжатие: было 60 мин → стало 22 мин (63% сокращение)
+- Найдено фраз score≥6: 89 из 234
+- Использовано: 6 сегментов
+
+Идея 3 — История версий в ResultGallery:
+Показывать v1, v2 рядом — пользователь сравнивает
+и выбирает лучший вариант
+
+═══════════════════════════════════════════
+### Ограничения:
+═══════════════════════════════════════════
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+- TypeScript строгий
+- Не ломать существующие компоненты
+- globals.css — единственный файл стилей
+
+### Порядок выполнения:
+1. Читай все файлы
+2. globals.css — дизайн-аудит
+3. logo.svg — создать
+4. Баги А, Б, В, Г — исправить
+5. TaskBriefModal.tsx — создать
+6. highlight_scorer.py — обновить
+7. Очистка файлов
+8. Отчёт по каждому пункту

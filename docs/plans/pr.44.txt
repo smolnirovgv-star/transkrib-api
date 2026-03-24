@@ -1,0 +1,8 @@
+Покажи что находится в реестре и файлах trial:
+
+1. powershell -Command "Get-ItemProperty 'HKCU:\Software\Transkrib' 2>$null"
+2. powershell -Command "Get-ItemProperty 'HKLM:\Software\Transkrib' 2>$null"  
+3. dir "%APPDATA%\Transkrib\trial*"
+4. type "%APPDATA%\Transkrib\trial.dat" 2>nul
+
+Покажи вывод каждой команды.

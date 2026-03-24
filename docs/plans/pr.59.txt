@@ -1,0 +1,134 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ФИНАЛЬНЫЕ ЗАДАЧИ — 4 исправления
+
+Сначала прочитай:
+- src/renderer/components/TranscriptViewer.tsx
+- src/renderer/components/SegmentTimeline.tsx
+- src/renderer/components/ExportModal.tsx
+- backend/app/services/highlight_scorer.py
+- backend/app/routers/transcript.py
+- backend/app/routers/export.py (если есть)
+
+═══════════════════════════════════════════
+ЗАДАЧА 1 — Транскрипт: важные моменты + поиск
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/TranscriptViewer.tsx
+
+А) Поиск по тексту:
+Найди где отображаются сегменты транскрипта.
+Убедись что поиск фильтрует по seg.text:
+
+const filtered = segments.filter(seg =>
+  searchQuery.trim() === '' ||
+  seg.text.toLowerCase().includes(searchQuery.toLowerCase())
+)
+
+Используй filtered вместо segments при рендере.
+
+Б) Важные моменты:
+При загрузке транскрипта делать запрос:
+GET /api/transcript/{filename}/highlights
+
+Если highlights пустые — показывать сообщение:
+'Важные моменты не определены для этого видео'
+
+Файл: backend/app/routers/transcript.py
+
+Добавь endpoint если нет:
+GET /api/transcript/{filename}/highlights
+
+Возвращает топ фразы из файла транскрипта:
+- Читать .json файл транскрипта
+- Возвращать segments где score >= 6
+- Если score нет — возвращать первые 10 сегментов
+- Формат: { 'highlights': [{ 'text': ..., 'start': ..., 'score': ... }] }
+
+═══════════════════════════════════════════
+ЗАДАЧА 2 — Карта сегментов: кнопки Включён/Вырезан
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/SegmentTimeline.tsx
+
+Прочитай файл и найди кнопки переключения сегментов.
+
+Проблема: нажатие на сегмент не меняет его статус.
+
+Исправь обработчик клика:
+const handleSegmentClick = (index) => {
+  const updated = segments.map((seg, i) =>
+    i === index ? { ...seg, included: !seg.included } : seg
+  )
+  setSegments(updated)
+  if (onSegmentsChange) onSegmentsChange(updated)
+}
+
+Добавь визуальный feedback:
+- included=true → зелёный цвет (#22C55E)
+- included=false → серый цвет (#94A3B8)
+- cursor: pointer на каждом сегменте
+
+═══════════════════════════════════════════
+ЗАДАЧА 3 — Экспорт видео: Source file not found
+═══════════════════════════════════════════
+
+Прочитай где находится логика экспорта.
+Найди файл export.py или функцию в standalone_tasks_router.py.
+
+Проблема: при экспорте не находит исходный файл.
+
+Исправь путь к файлу — проверять несколько вариантов:
+
+import os
+from pathlib import Path
+
+def find_result_file(filename):
+    appdata = os.environ.get('APPDATA', '')
+    candidates = [
+        os.path.join(appdata, 'Transkrib', 'storage', 'results', filename),
+        os.path.join(os.path.dirname(__file__), '..', '..', 'storage', 'results', filename),
+        os.path.join('storage', 'results', filename),
+    ]
+    for path in candidates:
+        normalized = os.path.normpath(path)
+        if os.path.exists(normalized):
+            return normalized
+    return None
+
+Используй find_result_file() перед экспортом.
+Если файл не найден — вернуть понятную ошибку:
+{'error': 'Файл не найден: ' + filename + '. Проверьте что видео ещё не удалено.'}
+
+═══════════════════════════════════════════
+ЗАДАЧА 4 — Обновить ссылку TG в подвале
+═══════════════════════════════════════════
+
+Файл: src/renderer/components/AppFooter.tsx
+
+Найди кнопку TG (Telegram).
+Убедись что при клике открывается:
+https://t.me/video_transkrib
+
+Логика открытия:
+const openTelegram = () => {
+  const url = 'https://t.me/video_transkrib'
+  if (window.electronAPI && window.electronAPI.openExternal) {
+    window.electronAPI.openExternal(url)
+  } else {
+    window.open(url, '_blank')
+  }
+}
+
+═══════════════════════════════════════════
+После всех исправлений:
+═══════════════════════════════════════════
+1. TypeScript: npx tsc --noEmit
+2. Сборка: rebuild_installer.bat
+3. Отчёт по каждой задаче
+
+Не использовать backticks. Только одинарные кавычки.
+OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/

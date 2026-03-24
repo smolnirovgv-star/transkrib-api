@@ -1,0 +1,25 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО backend/render.yaml. Всё остальное не трогать.
+
+Добавь HOST=0.0.0.0 в envVars чтобы Render мог принимать запросы:
+
+services:
+  - type: web
+    name: transkrib-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python standalone_server.py
+    envVars:
+      - key: HOST
+        value: '0.0.0.0'
+      - key: PORT
+        fromService:
+          type: web
+          name: transkrib-api
+          property: port
+      - key: APP_WHISPER_MODEL
+        value: tiny
+      - key: APP_ANTHROPIC_API_KEY
+        sync: false
+
+Отчёт только по изменённым строкам.

@@ -1,0 +1,17 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО globals.css. Всё остальное не трогать.
+
+Найди .how-it-works-grid и исправь на 3 колонки:
+
+.how-it-works-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 16px !important;
+  padding: 16px !important;
+  max-width: 960px !important;
+  margin: 0 auto !important;
+  overflow: visible !important;
+}
+
+Только перезапусти Vite — не нужна пересборка.
+Отчёт только по изменённым строкам.

@@ -1,0 +1,17 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+СРОЧНЫЙ БАГ: AuthModal — вкладка "Регистрация" не переключается
+
+Файл: platforms/desktop_windows/src/renderer/components/AuthModal.tsx
+
+Открой файл и найди кнопки табов (Войти / Регистрация).
+Проблема: клик на "Регистрация" не меняет view.
+
+Проверь:
+1. Есть ли type="button" на обоих tab-кнопках?
+2. Есть ли onClick={() => go('register')} на кнопке Регистрация?
+3. Функция go() правильно вызывает setView()?
+
+Покажи текущий код кнопок табов — найдём причину.
+Исправь и проверь в браузере.

@@ -1,0 +1,152 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+## ЗАДАЧА — Исправить сброс пароля + добавить форму смены пароля
+
+### Сначала прочитай:
+- platforms/desktop_windows/src/renderer/components/AuthModal.tsx
+- platforms/desktop_windows/src/renderer/App.tsx
+- platforms/desktop_windows/src/renderer/lib/supabaseClient.ts
+- platforms/desktop_windows/src/renderer/i18n/ru.ts
+
+═══════════════════════════════════════════
+### ПРОБЛЕМА 1 — Петля при сбросе пароля
+═══════════════════════════════════════════
+
+Когда пользователь кликает ссылку из письма сброса пароля —
+Supabase добавляет в URL токен вида:
+  http://localhost:5174/#access_token=xxx&type=recovery
+
+Приложение не обрабатывает этот токен → пользователь
+попадает на главную страницу → петля.
+
+ИСПРАВЛЕНИЕ в App.tsx:
+
+При старте приложения проверяй URL hash:
+```typescript
+useEffect(() => {
+  const hash = window.location.hash
+  if (hash.includes('type=recovery')) {
+    // Показать форму смены пароля
+    setShowPasswordReset(true)
+  }
+  if (hash.includes('type=signup') || hash.includes('type=magiclink')) {
+    // Подтверждение email — очистить hash
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+}, [])
+```
+
+═══════════════════════════════════════════
+### ПРОБЛЕМА 2 — Нет формы смены пароля
+═══════════════════════════════════════════
+
+Добавь новый view 'reset' в AuthModal.tsx
+(рядом с существующими 'login' | 'register' | 'forgot'):
+
+Форма смены пароля:
+- Заголовок: "Новый пароль"
+- Поле: "Новый пароль" (с показом/скрытием)
+- Поле: "Подтвердить пароль"
+- Кнопка: "Сохранить пароль"
+- После успеха: сообщение "Пароль успешно изменён"
+  + автоматический переход на форму входа через 2 сек
+
+Логика:
+```typescript
+const handleResetPassword = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (newPassword !== confirmPassword) {
+    setError('Пароли не совпадают')
+    return
+  }
+  if (newPassword.length < 6) {
+    setError('Пароль — минимум 6 символов')
+    return
+  }
+  setLoading(true)
+  try {
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    })
+    if (error) throw error
+    setMessage('Пароль успешно изменён!')
+    // Очистить hash из URL
+    window.history.replaceState({}, '', window.location.pathname)
+    // Через 2 сек перейти на логин
+    setTimeout(() => go('login'), 2000)
+  } catch (err: any) {
+    setError(err.message || 'Ошибка смены пароля')
+  } finally {
+    setLoading(false)
+  }
+}
+```
+
+═══════════════════════════════════════════
+### ПРОБЛЕМА 3 — Supabase redirectTo
+═══════════════════════════════════════════
+
+В AuthModal.tsx в функции handleForgot исправь вызов:
+```typescript
+const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: window.location.origin + '/?type=recovery'
+})
+```
+
+Это гарантирует что ссылка из письма ведёт правильно.
+
+═══════════════════════════════════════════
+### ЗАДАЧА 2 — Вкладка смены пароля в профиле
+═══════════════════════════════════════════
+
+Добавь в AppHeader.tsx или в отдельный компонент ProfileMenu:
+
+Когда пользователь АВТОРИЗОВАН — вместо кнопки "Войти"
+показывай кнопку с email/аватаром и выпадающее меню:
+
+[👤 user@email.com  ▾]
+├── Сменить пароль
+├── Моя лицензия
+└── Выйти
+
+При клике "Сменить пароль" → открывать AuthModal с view='reset'
+(без токена из URL — просто ввести старый и новый пароль)
+
+Для смены пароля авторизованным пользователем:
+```typescript
+// Просто updateUser без токена
+const { error } = await supabase.auth.updateUser({
+  password: newPassword
+})
+```
+
+═══════════════════════════════════════════
+### i18n — добавить в ru.ts, en.ts, zh.ts:
+═══════════════════════════════════════════
+- auth.resetTitle = "Новый пароль"
+- auth.newPassword = "Новый пароль"
+- auth.confirmNewPassword = "Подтвердить пароль"
+- auth.savePassword = "Сохранить пароль"
+- auth.passwordChanged = "Пароль успешно изменён!"
+- auth.changePassword = "Сменить пароль"
+- auth.myLicense = "Моя лицензия"
+- auth.profile = "Профиль"
+
+═══════════════════════════════════════════
+### Ограничения:
+═══════════════════════════════════════════
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/ затем копировать
+- TypeScript строгий
+- Не ломать существующий AuthModal
+
+### Порядок:
+1. Читай файлы
+2. Исправь handleForgot (redirectTo)
+3. Добавь view 'reset' в AuthModal
+4. Обнови App.tsx (обработка URL hash)
+5. Добавь ProfileMenu в AppHeader
+6. i18n ключи
+7. Протестируй: npm run dev → забыл пароль →
+   проверь что форма смены пароля открывается
+

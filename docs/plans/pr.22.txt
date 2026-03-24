@@ -1,0 +1,23 @@
+Контекст: Transkrib SmartCut AI
+
+СРОЧНЫЙ БАГ: Синтаксическая ошибка в GuideModal.tsx
+
+Ошибка: "Unterminated string constant" на строке 119:44
+
+Файл: platforms/desktop_windows/src/renderer/components/GuideModal.tsx
+
+Строка 119 содержит:
+['Где хранятся мои видео?', 'Только на вашем компьютере: C:\Users\[Имя]\AppDa...
+
+ПРОБЛЕМА: Обратный слэш \ в строке не экранирован.
+В TypeScript/JavaScript нужно экранировать: C:\\Users\\[Имя]\\AppData
+
+ИСПРАВЛЕНИЕ:
+Найди строку 119 и замени все одинарные \ на \\ в пути к файлу.
+
+Пример:
+БЫЛО:   'C:\Users\[Имя]\AppData\Roaming\Transkrib\storage\'
+СТАЛО:  'C:\\Users\\[Имя]\\AppData\\Roaming\\Transkrib\\storage\\'
+
+Проверь все строки в файле где есть пути Windows с обратными слэшами.
+После исправления убедись что npm run dev запускается без ошибок.

@@ -1,0 +1,4 @@
+Сбрось trial период полностью. Удали ключ реестра:
+powershell -Command "Remove-Item 'HKCU:\Software\Transkrib' -Recurse -Force"
+Затем проверь что ключ удалён:
+powershell -Command "Get-ItemProperty 'HKCU:\Software\Transkrib' 2>$null"

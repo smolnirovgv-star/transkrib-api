@@ -1,0 +1,15 @@
+Выполни по шагам в терминале в корне проекта:
+
+Шаг 1 — добавить все файлы в коммит:
+git add .
+
+Шаг 2 — проверить что попало (последний раз):
+git status
+
+Шаг 3 — зафиксировать с описанием:
+git commit -m "feat: add macOS build, GitHub Actions workflow, docs structure"
+
+Шаг 4 — отправить на GitHub:
+git push origin main
+
+Покажи вывод каждого шага.

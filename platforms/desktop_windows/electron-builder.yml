@@ -1,0 +1,59 @@
+appId: com.transkrib.smartcut
+productName: Transkrib SmartCut AI
+copyright: Copyright © 2026 Transkrib SmartCut AI
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: "../../backend/dist/backend"
+    to: "backend"
+    filter:
+      - "**/*"
+  - from: "../../backend/.env"
+    to: "backend/.env"
+  - from: "../../docs"
+    to: "docs"
+    filter:
+      - "*.md"
+      - "*.txt"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: build/icon.ico
+  artifactName: "${productName}-Setup-${version}-${arch}.${ext}"
+  signingHashAlgorithms: null
+  sign: null
+  forceCodeSigning: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  license: "build/license.txt"
+  include: "build/installer.nsh"
+  installerLanguages:
+    - ru_RU
+    - en_US
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Transkrib SmartCut AI
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  language: 1049
+
+asar: true
+compression: maximum

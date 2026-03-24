@@ -1,0 +1,39 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО то что указано. Всё остальное оставить без изменений.
+
+ЗАДАЧА — Исправить 2 бага
+
+БАГ 1 — ImportError: No module named 'app.routers.transcript_formatter'
+
+Ошибка при скачивании транскрипта:
+{"detail":"No module named 'app.routers.transcript_formatter'"}
+
+Файл: backend/app/routers/transcript.py
+Строка с импортом: from app.routers.transcript_formatter import ...
+
+Исправь импорт — правильный путь:
+from app.services.transcript_formatter import format_transcript
+
+Файл transcript_formatter.py находится в:
+backend/app/services/transcript_formatter.py
+
+БАГ 2 — Dropdown транскрипта обрезается слева
+
+Файл: src/renderer/components/ResultGallery.tsx
+или src/renderer/styles/globals.css
+
+Dropdown меню выходит за левый край карточки.
+Текст обрезается — видно только правую часть слов.
+
+Исправь позиционирование dropdown:
+- Убедись что используется: right: 0; left: auto;
+- Добавь: min-width: 200px;
+- Добавь: overflow: visible на родительском контейнере
+
+Ограничения:
+- OneDrive EEXIST → C:/Users/Admin/AppData/Local/Temp/
+- TypeScript строгий
+- Не менять другие компоненты
+- Не использовать backticks
+
+Отчёт только по изменённым файлам.

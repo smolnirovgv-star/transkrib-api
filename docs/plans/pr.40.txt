@@ -1,0 +1,35 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО указанные файлы. Всё остальное не трогать.
+
+ЗАДАЧА — Два финальных бага
+
+БАГ 1 — Dropdown транскрипта обрезается слева
+
+Файл: src/renderer/styles/globals.css
+
+Найди .transcript-dropdown-menu и убедись что там:
+position: absolute;
+right: 0;
+left: auto;
+min-width: 220px;
+z-index: 1000;
+
+Найди родительский контейнер кнопки транскрипта
+и добавь: position: relative; overflow: visible;
+
+БАГ 2 — UI не переключается на результат автоматически
+
+Файл: src/renderer/App.tsx
+
+После завершения задачи (state === 'completed')
+UI должен автоматически переключиться на экран результата.
+
+В polling функции (где опрашивается статус задачи) добавь:
+if (task.state === 'completed' && phase !== 'result') {
+  setPhase('result')
+  setTaskId(task.task_id)
+  setResultFilename(task.result_filename)
+}
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

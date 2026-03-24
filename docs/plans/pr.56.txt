@@ -1,0 +1,37 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО ResultGallery.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Удаление видео мгновенно без подтверждения
+
+Файл: src/renderer/components/ResultGallery.tsx
+
+Найди функцию handleDelete.
+Убери window.confirm и состояние подтверждения.
+Удаление должно происходить МГНОВЕННО при нажатии кнопки:
+
+const handleDelete = async (filename) => {
+  try {
+    if (window.electronAPI && window.electronAPI.deleteResult) {
+      await window.electronAPI.deleteResult(filename)
+    } else {
+      await fetch(
+        'http://127.0.0.1:8000/api/tasks/result/' + encodeURIComponent(filename),
+        { method: 'DELETE' }
+      )
+    }
+    setResults(prev => prev.filter(r => r.filename !== filename))
+    if (selected && selected.filename === filename) {
+      const remaining = results.filter(r => r.filename !== filename)
+      setSelected(remaining.length > 0 ? remaining[0] : null)
+    }
+  } catch (e) {
+    console.error('Delete error:', e)
+  }
+}
+
+Убери любые состояния confirmDelete, showConfirm и т.п.
+Кнопка Удалить сразу вызывает handleDelete.
+
+Не использовать backticks. Только одинарные кавычки.
+После исправления запусти rebuild_installer.bat
+Отчёт только по изменённым строкам.

@@ -1,0 +1,37 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО App.tsx. Всё остальное не трогать.
+
+ЗАДАЧА — Ускорить переход на экран результата после обработки
+
+Проблема: после завершения обработки видео UI долго
+не переключается на экран результата.
+
+Файл: src/renderer/components/ProcessingProgress.tsx
+(или App.tsx где происходит polling)
+
+Найди интервал polling — сейчас скорее всего 3000-5000ms.
+
+Исправь:
+1. Уменьши интервал polling до 1000ms (1 секунда)
+2. При state === 'completed' — немедленно переключить
+   фазу на 'result' БЕЗ ожидания следующего интервала
+3. При state === 'failed' — показать ошибку сразу
+
+Пример:
+const interval = setInterval(async () => {
+  const task = await fetchTaskStatus(taskId)
+  if (task.state === 'completed') {
+    clearInterval(interval)
+    onComplete(task) // немедленно!
+  }
+  if (task.state === 'failed') {
+    clearInterval(interval)
+    onError(task.error_message)
+  }
+}, 1000) // каждую секунду
+
+Также добавь — при получении completed
+сразу вызвать onComplete не ожидая следующий тик.
+
+Не использовать backticks. Только одинарные кавычки.
+Отчёт только по изменённым строкам.

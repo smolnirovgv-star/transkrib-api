@@ -1,0 +1,28 @@
+Контекст: Transkrib SmartCut AI
+ВАЖНО: Изменять ТОЛЬКО globals.css. Всё остальное не трогать.
+
+ЗАДАЧА — Убрать overflow:hidden у screens-wrapper
+
+Найди в globals.css классы:
+.screens-wrapper и .screens-track
+
+Добавь или замени:
+.screens-wrapper {
+  overflow: visible !important;
+  height: auto !important;
+}
+
+.screens-track {
+  overflow: visible !important;
+}
+
+Также убери ограничение высоты на секции How It Works:
+.how-section {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: unset !important;
+}
+
+Не использовать backticks. Только одинарные кавычки.
+Только перезапусти Vite — без пересборки.
+Отчёт только по изменённым строкам.

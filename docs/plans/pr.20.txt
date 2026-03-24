@@ -1,0 +1,43 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+
+СРОЧНЫЙ БАГ: UrlInput — ошибка "Cannot read properties of undefined (reading 'submitUrl')"
+
+Файл: platforms/desktop_windows/src/renderer/components/UrlInput.tsx
+
+ПРОБЛЕМА:
+В браузерном режиме (без Electron) window.electronAPI = undefined.
+При нажатии "Отправить" код вызывает window.electronAPI.submitUrl()
+и падает с ошибкой.
+
+ИСПРАВЛЕНИЕ:
+Добавь browser-mode fallback — вместо electronAPI
+отправлять запрос напрямую в backend через fetch:
+```typescript
+const handleSubmit = async () => {
+  const isDev = new URLSearchParams(window.location.search).get('dev') === 'true'
+    || localStorage.getItem('transkrib_dev_mode') === 'true'
+
+  if (window.electronAPI?.submitUrl) {
+    // Electron режим
+    await window.electronAPI.submitUrl(url)
+  } else if (isDev) {
+    // Browser dev режим — напрямую к backend
+    const response = await fetch('http://127.0.0.1:8000/api/tasks/submit-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    })
+    const data = await response.json()
+    if (data.task_id) {
+      onTaskCreated?.(data.task_id)
+    }
+  }
+}
+```
+
+Также проверь DropZone.tsx на такую же проблему с uploadFile.
+Исправь по аналогии.
+
+После исправления проверь что кнопка "Отправить" работает
+в браузере на localhost:5173/?dev=true без ошибок.

@@ -1,0 +1,68 @@
+Контекст: Transkrib SmartCut AI
+Путь: C:\Users\Admin\OneDrive\Desktop\Cursor\Transkrib_SmartCut_AI\
+Платформа: platforms/desktop_windows/src/renderer/
+
+## ЗАДАЧА — Фаза 3.3: Экспорт с настройками качества
+
+Реализуй модальное окно экспорта с настройками качества в ResultGallery.
+
+### Что нужно сделать:
+
+**1. Создай компонент ExportModal.tsx**
+Путь: platforms/desktop_windows/src/renderer/components/ExportModal.tsx
+
+Настройки экспорта:
+- Формат: MP4 / MKV / WebM (select)
+- Качество видео: Высокое (CRF 18) / Среднее (CRF 23) / Низкое (CRF 28) (radio/select)
+- Разрешение: Оригинал / 1080p / 720p / 480p (select)
+- Субтитры: Встроить в видео / Отдельный .srt файл / Оба варианта / Без субтитров (radio)
+- Папка сохранения: путь + кнопка "Выбрать папку" (через electronAPI)
+- Кнопки: "Экспортировать" (btn-primary) и "Отмена"
+
+Стиль: использовать существующие CSS классы из globals.css (glass-card, btn-primary, auth-overlay и т.д.)
+Поддержка тем: light/dark через CSS vars
+i18n: добавить ключи в i18n/ru.ts, en.ts, zh.ts
+
+**2. Обнови ResultGallery.tsx**
+- Добавь кнопку "Экспорт" рядом с каждым результатом
+- При клике — открывай ExportModal с путём к файлу результата
+- После подтверждения — вызывай electronAPI.exportVideo(options) или POST /api/export
+
+**3. Добавь IPC handler в main/index.ts**
+- Канал: 'export-video'
+- Параметры: { sourcePath, outputPath, format, quality, resolution, subtitles }
+- Вызывает backend API POST /export или shell.showSaveDialog
+
+**4. Добавь endpoint в backend**
+Файл: backend/app/routers/ (создай export.py или добавь в существующий роутер)
+POST /export
+Body: { task_id, format, crf, resolution, subtitle_mode, output_path }
+Логика: FFmpeg команда с нужными параметрами
+
+**5. Добавь i18n ключи**
+В i18n/ru.ts добавь секцию export:
+- export.title = "Экспорт видео"
+- export.format = "Формат"
+- export.quality = "Качество"
+- export.resolution = "Разрешение"
+- export.subtitles = "Субтитры"
+- export.outputFolder = "Папка сохранения"
+- export.btn = "Экспортировать"
+- export.quality_high = "Высокое"
+- export.quality_medium = "Среднее"
+- export.quality_low = "Низкое"
+- export.sub_embed = "Встроить в видео"
+- export.sub_srt = "Отдельный .srt"
+- export.sub_both = "Оба варианта"
+- export.sub_none = "Без субтитров"
+Продублируй в en.ts и zh.ts
+
+### Важные ограничения:
+- Не ломать существующие компоненты
+- Стиль строго через globals.css переменные (--bg-primary, --text-primary, --accent и т.д.)
+- OneDrive workaround: если Edit падает с EEXIST — писать через temp C:/Users/Admin/AppData/Local/Temp/ затем копировать
+- TypeScript строгий — проверь типы
+
+Начни с чтения ResultGallery.tsx и globals.css чтобы понять существующий стиль.
+Затем создай ExportModal.tsx, потом обнови ResultGallery, затем IPC, затем backend endpoint.
+Отчитывайся после каждого шага.
