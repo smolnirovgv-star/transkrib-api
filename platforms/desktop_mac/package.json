@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Transkrib Desktop - macOS Electron App",
   "main": "dist/main/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smolnirovgv-star/transkrib-api.git"
+  },
   "scripts": {
     "dev": "concurrently \"vite\" \"tsc -p tsconfig.main.json --watch\" \"wait-on http://localhost:5173 && electron .\"",
     "build:renderer": "vite build",
