@@ -1,6 +1,6 @@
 {
   "name": "transkrib-windows",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Transkrib Desktop - Windows 11 Electron App with Fluent Design",
   "main": "dist/main/index.js",
   "repository": {
