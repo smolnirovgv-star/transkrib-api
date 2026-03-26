@@ -74,8 +74,41 @@ jobs:
           path: platforms/desktop_mac/release/*.dmg
           retention-days: 5
 
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: platforms/desktop_windows/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: platforms/desktop_windows
+
+      - name: Install Linux build deps
+        run: sudo apt-get install -y rpm
+
+      - name: Build Linux installer
+        run: npm run build && electron-builder --linux AppImage
+        working-directory: platforms/desktop_windows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: platforms/desktop_windows/release/*.AppImage
+          retention-days: 5
+
   publish-release:
-    needs: [build-windows, build-mac]
+    needs: [build-windows, build-mac, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -93,12 +126,19 @@ jobs:
           name: mac-installer
           path: ./release
 
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-installer
+          path: ./release
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ./release/*.exe
             ./release/*.dmg
+            ./release/*.AppImage
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
