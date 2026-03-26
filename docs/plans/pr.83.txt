@@ -1,0 +1,325 @@
+Файл с заданием: docs/plans/pr.78.md — создай его с содержимым ниже, 
+затем выполни все задачи из него.
+
+---
+# pr.78 — Экран онбординга с выбором ОС и кнопкой "Поделиться"
+
+**Статус:** в работе  
+**Дата:** 24.03.2026  
+**Зависит от:** pr.77 (папка desktop_mac уже создана)
+
+## Контекст
+
+Онбординг (от англ. onboarding — "первый запуск") — это экран который 
+пользователь видит ОДИН РАЗ при первом открытии приложения. После 
+первого показа он больше не появляется.
+
+Нужно реализовать для ОБЕИХ платформ:
+- platforms/desktop_windows/
+- platforms/desktop_mac/
+
+## Шаг 0 — Изучи код перед началом
+
+Найди и покажи мне:
+
+1. Где в коде определяется первый экран приложения:
+   - platforms/desktop_windows/src/renderer/ — ищи App.tsx или main.tsx
+   - Найди слова: "onboarding", "firstRun", "first_run", "welcome"
+   - Если не найдёшь — покажи структуру папки src/renderer/
+
+2. Есть ли уже какое-то хранилище настроек пользователя:
+   - Ищи слова: "localStorage", "electron-store", "store.get", "settings"
+   - Это нужно чтобы запомнить что онбординг уже показывался
+
+3. Покажи содержимое App.tsx (или главного файла роутинга)
+
+После ответов продолжай по шагам.
+
+## Шаг 1 — Создать компонент OnboardingScreen
+
+Создай файл:
+platforms/desktop_windows/src/renderer/components/OnboardingScreen.tsx
+
+Компонент должен:
+
+### Внешний вид
+- Полноэкранный оверлей поверх основного интерфейса
+- Тёмный фон в стиле существующего дизайна приложения
+- Логотип или название "Transkrib SmartCut AI" сверху
+- Приветственный текст: "Добро пожаловать!"
+
+### Блок "Поделиться с коллегой"
+Текст: "Есть версии для других операционных систем:"
+
+Три кнопки (горизонтально):
+- [Windows — скачать .exe]  
+- [macOS — скачать .dmg]  
+- [Linux — скачать .AppImage]
+
+Каждая кнопка при клике открывает ссылку в браузере:
+- Windows:  https://github.com/smolnirovgv-star/transkrib-api/releases/latest
+- macOS:    https://github.com/smolnirovgv-star/transkrib-api/releases/latest
+- Linux:    https://github.com/smolnirovgv-star/transkrib-api/releases/latest
+
+(Пока все три ведут на одну страницу releases — потом заменим на прямые ссылки)
+
+Кнопка "Поделиться ссылкой" — копирует в буфер обмена текст:
+"Попробуй Transkrib SmartCut AI — транскрибация и нарезка видео за минуты.
+Скачать для Windows, macOS, Linux: 
+https://github.com/smolnirovgv-star/transkrib-api/releases/latest"
+
+После копирования кнопка на 2 секунды меняет текст на "✓ Ссылка скопирована!"
+
+### Кнопка закрытия
+Большая кнопка внизу: "Начать работу →"
+При нажатии — закрывает онбординг и запоминает что он уже показывался.
+
+### Код компонента (TypeScript + React)
+```typescript
+import { useState, useEffect } from 'react'
+
+// Ключ для хранения факта что онбординг уже показывался
+// localStorage — это встроенное хранилище браузера/Electron
+// которое сохраняется между запусками приложения
+const ONBOARDING_KEY = 'transkrib_onboarding_shown'
+
+// URL для скачивания — пока всё на одну страницу
+const DOWNLOAD_URL = 
+  'https://github.com/smolnirovgv-star/transkrib-api/releases/latest'
+
+const SHARE_TEXT = 
+  `Попробуй Transkrib SmartCut AI — транскрибация и нарезка видео за минуты.\nСкачать для Windows, macOS, Linux: ${DOWNLOAD_URL}`
+
+interface OnboardingScreenProps {
+  onClose: () => void
+}
+
+export function OnboardingScreen({ onClose }: OnboardingScreenProps) {
+  const [copied, setCopied] = useState(false)
+
+  // Открыть ссылку в браузере пользователя (не внутри Electron)
+  const openLink = (url: string) => {
+    // window.electronAPI.openExternal — специальный метод Electron
+    // для открытия ссылок в системном браузере
+    if (window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(url)
+    } else {
+      window.open(url, '_blank')
+    }
+  }
+
+  // Скопировать текст в буфер обмена
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(SHARE_TEXT)
+      setCopied(true)
+      // Через 2 секунды вернуть кнопку в исходное состояние
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Запасной вариант если clipboard API недоступен
+      const el = document.createElement('textarea')
+      el.value = SHARE_TEXT
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleClose = () => {
+    // Запомнить что онбординг показан — больше не показывать
+    localStorage.setItem(ONBOARDING_KEY, 'true')
+    onClose()
+  }
+
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(10, 10, 15, 0.97)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      padding: '40px 24px',
+    }}>
+      {/* Название */}
+      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 8, textAlign: 'center' }}>
+        Transkrib SmartCut AI
+      </h1>
+      <p style={{ fontSize: 16, opacity: 0.6, marginBottom: 48, textAlign: 'center' }}>
+        Добро пожаловать!
+      </p>
+
+      {/* Блок скачивания для других ОС */}
+      <div style={{
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 12,
+        padding: '24px 32px',
+        marginBottom: 32,
+        maxWidth: 500,
+        width: '100%',
+        textAlign: 'center',
+      }}>
+        <p style={{ fontSize: 14, opacity: 0.7, marginBottom: 20 }}>
+          Есть версии для других операционных систем:
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 20 }}>
+          {[
+            { label: 'Windows', ext: '.exe' },
+            { label: 'macOS', ext: '.dmg' },
+            { label: 'Linux', ext: '.AppImage' },
+          ].map(({ label, ext }) => (
+            <button
+              key={label}
+              onClick={() => openLink(DOWNLOAD_URL)}
+              style={{
+                padding: '8px 16px',
+                background: 'rgba(91,95,239,0.15)',
+                border: '1px solid rgba(91,95,239,0.4)',
+                borderRadius: 8,
+                color: '#a5a8ff',
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              {label} {ext}
+            </button>
+          ))}
+        </div>
+
+        {/* Кнопка поделиться */}
+        <button
+          onClick={handleShare}
+          style={{
+            padding: '10px 24px',
+            background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.08)',
+            border: `1px solid ${copied ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.15)'}`,
+            borderRadius: 8,
+            color: copied ? '#4ade80' : 'rgba(255,255,255,0.8)',
+            fontSize: 14,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          {copied ? '✓ Ссылка скопирована!' : '📤 Поделиться с коллегой'}
+        </button>
+      </div>
+
+      {/* Кнопка начать */}
+      <button
+        onClick={handleClose}
+        style={{
+          padding: '14px 48px',
+          background: '#5b5fef',
+          border: 'none',
+          borderRadius: 10,
+          color: '#fff',
+          fontSize: 16,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        Начать работу →
+      </button>
+    </div>
+  )
+}
+
+// Хук (от англ. hook — "крючок") — вспомогательная функция
+// которая проверяет нужно ли показывать онбординг
+// useOnboarding() возвращает { show, close }
+export function useOnboarding() {
+  const [show, setShow] = useState(false)
+
+  useEffect(() => {
+    // Проверяем при запуске: показывался ли онбординг раньше?
+    const shown = localStorage.getItem(ONBOARDING_KEY)
+    if (!shown) {
+      setShow(true)
+    }
+  }, [])
+
+  const close = () => setShow(false)
+
+  return { show, close }
+}
+```
+
+## Шаг 2 — Подключить OnboardingScreen в App.tsx
+
+В главном файле App.tsx добавить:
+```typescript
+import { OnboardingScreen, useOnboarding } from './components/OnboardingScreen'
+
+// Внутри компонента App:
+const { show: showOnboarding, close: closeOnboarding } = useOnboarding()
+
+// В JSX (верстке) добавить ПЕРВЫМ элементом внутри return:
+{showOnboarding && (
+  <OnboardingScreen onClose={closeOnboarding} />
+)}
+```
+
+## Шаг 3 — Проверить что electronAPI.openExternal существует
+
+Найди в platforms/desktop_windows/src/main/ файл preload.ts (или preload.js).
+Это файл "моста" между Electron и React — он позволяет React коду 
+вызывать системные функции.
+
+Если в preload.ts НЕТ метода openExternal — добавь:
+```typescript
+contextBridge.exposeInMainWorld('electronAPI', {
+  // ...существующие методы не трогать...
+  openExternal: (url: string) => shell.openExternal(url),
+})
+```
+
+Также добавь импорт в начало файла если нет:
+```typescript
+import { shell } from 'electron'
+```
+
+Если файл types/electron.d.ts существует — добавь туда:
+```typescript
+interface Window {
+  electronAPI: {
+    // ...существующие типы...
+    openExternal: (url: string) => void
+  }
+}
+```
+
+## Шаг 4 — Скопировать компонент в desktop_mac
+
+После того как всё работает в desktop_windows:
+```bash
+cp platforms/desktop_windows/src/renderer/components/OnboardingScreen.tsx \
+   platforms/desktop_mac/src/renderer/components/OnboardingScreen.tsx
+```
+
+Файл идентичен для обеих платформ — логика одна и та же.
+
+## Что НЕ трогать
+- Логику обработки видео
+- Роутер/навигацию приложения  
+- backend.ts и standalone_server.py
+- electron-builder.yml обеих платформ
+
+## Ожидаемый результат
+
+При первом запуске приложения пользователь видит экран с:
+1. Тремя кнопками скачивания для других ОС
+2. Кнопкой "Поделиться с коллегой" которая копирует ссылку
+3. Кнопкой "Начать работу →"
+
+При повторном запуске экран НЕ показывается.
+
+После выполнения покажи мне:
+1. Что нашёл в Шаге 0 (структура App.tsx и preload.ts)
+2. Скриншот или описание как выглядит результат
+3. Если были ошибки TypeScript — покажи их

@@ -1,0 +1,29 @@
+Нужно добавить папки build/ в репозиторий для GitHub Actions.
+
+Шаг 1 — проверь что в .gitignore исключает build/:
+cat platforms/desktop_windows/.gitignore
+cat platforms/desktop_mac/.gitignore
+
+Шаг 2 — найди строки которые игнорируют build/ и закомментируй их.
+Например если есть строка "build/" — замени на "# build/" 
+НО только исполняемые файлы внутри build/ должны быть исключены.
+Нам нужны: icon.ico, icon.png, icon.icns, dmg-background.png, 
+installer.nsh, license.txt
+
+Шаг 3 — добавь в .gitignore обеих платформ такие строки 
+(вместо исключения всей папки):
+# build ресурсы — включаем в репо, исключаем только бинарники
+!build/
+!build/**
+build/*.exe
+build/*.dmg
+
+Шаг 4 — добавь файлы build/ в репо:
+git add platforms/desktop_windows/build/
+git add platforms/desktop_mac/build/
+git status
+
+Покажи вывод git status — какие файлы добавились в staged.
+Если всё правильно — выполни:
+git commit -m "fix: add build resources (icons, assets) for electron-builder"
+git

@@ -1,0 +1,21 @@
+Открой файл platforms/desktop_windows/package.json
+Найди строку "main": "dist/main/index.js"
+Добавь ПОСЛЕ неё (новой строкой) следующее:
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/smolnirovgv-star/transkrib-api.git"
+  },
+
+Затем открой platforms/desktop_mac/package.json
+Сделай то же самое — добавь секцию "repository" после "main".
+
+Проверь что оба файла сохранены и секция есть в обоих.
+
+Затем выполни в терминале в корне проекта:
+
+git add platforms/desktop_windows/package.json platforms/desktop_mac/package.json
+git commit -m "fix: add repository url to package.json for electron-builder"
+git push origin main
+
+Покажи содержимое обоих package.json после правки и вывод git push.

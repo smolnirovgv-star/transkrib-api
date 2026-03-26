@@ -1,0 +1,6 @@
+Открой в браузере ссылку и скопируй полный текст ошибки из логов build-windows:
+https://github.com/smolnirovgv-star/transkrib-api/actions/runs/23497841713/job/68383985532
+
+Найди строки после "Build Windows installer" — там будет конкретная 
+ошибка TypeScript или npm. Покажи мне последние 30 строк лога 
+начиная от слова "error" или "Error".

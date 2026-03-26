@@ -1,0 +1,13 @@
+В терминале в корне проекта выполни:
+
+cd platforms/desktop_windows
+npm install
+cd ../desktop_mac
+npm install
+cd ../..
+
+git add platforms/desktop_windows/package-lock.json platforms/desktop_mac/package-lock.json
+git commit -m "fix: add package-lock.json for GitHub Actions cache"
+git push origin main
+
+Покажи вывод git push.

@@ -28,6 +28,7 @@ import { UserGuideCard } from './components/UserGuideCard';
 import { GuideModal } from './components/GuideModal';
 import { TaskBriefModal } from './components/TaskBriefModal';
 import type { UserBrief } from './components/TaskBriefModal';
+import { OnboardingScreen, useOnboarding } from './components/OnboardingScreen';
 
 type Tab   = 'file' | 'url';
 type Phase = 'input' | 'processing' | 'result' | 'gallery';
@@ -85,6 +86,7 @@ const App: React.FC = () => {
   const uploadRef = useRef<HTMLDivElement>(null);
   const { state, progress, error } = useTaskProgress(taskId);
   const { user, signOut } = useAuth();
+  const { show: showOnboarding, close: closeOnboarding } = useOnboarding();
 
   useEffect(() => {
     if (!(window as any).electronAPI) return;
@@ -290,6 +292,9 @@ const App: React.FC = () => {
   // Email recovery link: bypass backend startup and license checks entirely
   if (resetFromEmail && showPasswordReset) return (
     <div className="app-shell">
+      {showOnboarding && (
+        <OnboardingScreen onClose={closeOnboarding} />
+      )}
       <TitleBar />
       <AuthModal
         initialView={'reset' as any}
