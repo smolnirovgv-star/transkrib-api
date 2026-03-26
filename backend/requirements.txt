@@ -6,7 +6,7 @@ python-multipart==0.0.9
 celery[redis]==5.4.0
 redis==5.2.1
 websockets==13.1
-openai-whisper==20231117
+faster-whisper==1.0.3
 anthropic==0.39.0
 yt-dlp>=2024.11.18
 pydantic==2.9.0
