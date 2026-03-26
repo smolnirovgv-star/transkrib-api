@@ -36,5 +36,6 @@
   },
   "build": {
     "extends": "electron-builder.yml"
-  }
+  },
+  "author": "Transkrib SmartCut AI"
 }
