@@ -95,7 +95,7 @@ jobs:
         run: sudo apt-get install -y rpm
 
       - name: Build Linux installer
-        run: npm run build && electron-builder --linux AppImage
+        run: npm run build && npx electron-builder --linux AppImage
         working-directory: platforms/desktop_windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
