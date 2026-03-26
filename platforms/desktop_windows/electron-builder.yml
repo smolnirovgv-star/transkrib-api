@@ -57,3 +57,5 @@ nsis:
 
 asar: true
 compression: maximum
+
+publish: null

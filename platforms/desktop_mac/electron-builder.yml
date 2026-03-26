@@ -36,3 +36,5 @@ dmg:
 
 asar: true
 compression: maximum
+
+publish: null
