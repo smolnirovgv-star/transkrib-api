@@ -59,6 +59,14 @@ class DownloadService:
             "--output", output_template,
             "--no-playlist",
             "--quiet", "--progress",
+            # Обход блокировки YouTube на серверах
+            "--extractor-retries", "3",
+            "--socket-timeout", "30",
+            "--add-header", "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "--add-header", "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "--add-header", "Accept-Language:en-us,en;q=0.5",
+            "--add-header", "Sec-Fetch-Mode:navigate",
+            "--extractor-args", "youtube:player_client=web,android",
         ]
         if self._ffmpeg_path:
             cmd.extend(["--ffmpeg-location", str(Path(self._ffmpeg_path).parent)])
