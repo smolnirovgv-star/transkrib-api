@@ -239,21 +239,84 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('app:submitUrl', async (_event, url: string, maxDurationSeconds?: number, whisperModel?: string) => {
-    try {
-      const response = await fetch(`${getBackendUrl()}/api/tasks/url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, max_duration_seconds: maxDurationSeconds ?? null, whisper_model: whisperModel ?? null }),
-      });
-      if (!response.ok) {
-        const text = await response.text();
-        let msg = text;
-        try { msg = JSON.parse(text).detail || text; } catch {}
-        return { success: false, error: msg };
+    const isYoutube = url.includes('youtube.com') || url.includes('youtu.be')
+
+    if (isYoutube) {
+      const { execFile } = require('child_process')
+      const { promisify } = require('util')
+      const execFileAsync = promisify(execFile)
+      const fss = require('fs')
+
+      const backendPath = process.env.NODE_ENV === 'development'
+        ? path.join(__dirname, '../../../../backend')
+        : path.join(process.resourcesPath, 'backend')
+
+      const ytdlpPath = process.platform === 'win32'
+        ? path.join(backendPath, '_internal', 'yt-dlp.exe')
+        : 'yt-dlp'
+
+      const tmpFile = path.join(app.getPath('temp'), `transkrib_${Date.now()}.mp4`)
+
+      const args = [
+        '-S', 'vcodec:h264,acodec:aac',
+        '--merge-output-format', 'mp4',
+        '--output', tmpFile,
+        '--no-playlist',
+        '--quiet',
+      ]
+      if (maxDurationSeconds) args.push('--match-filter', `duration <= ${maxDurationSeconds}`)
+      args.push(url)
+
+      try {
+        await execFileAsync(ytdlpPath, args)
+        const fileBuffer = await fs.promises.readFile(tmpFile)
+        const blob = new Blob([fileBuffer])
+        const form = new FormData()
+        form.append('file', blob, path.basename(tmpFile))
+        if (maxDurationSeconds) form.append('max_duration_seconds', String(maxDurationSeconds))
+        if (whisperModel) form.append('whisper_model', whisperModel)
+        const response = await fetch(`${getBackendUrl()}/api/tasks/upload`, { method: 'POST', body: form })
+        fss.unlink(tmpFile, () => {})
+        if (!response.ok) throw new Error(`Upload failed: ${response.status}`)
+        return { ...(await response.json() as object), success: true }
+      } catch (error: any) {
+        console.warn('Local yt-dlp failed, falling back to server:', error.message)
+        fss.unlink(tmpFile, () => {})
+        try {
+          const response = await fetch(`${getBackendUrl()}/api/tasks/url`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, max_duration_seconds: maxDurationSeconds ?? null, whisper_model: whisperModel ?? null }),
+          })
+          if (!response.ok) {
+            const text = await response.text()
+            let msg = text
+            try { msg = JSON.parse(text).detail || text } catch {}
+            return { success: false, error: msg }
+          }
+          return { ...(await response.json() as object), success: true }
+        } catch (e: any) {
+          return { success: false, error: String(e) }
+        }
       }
-      return { ...(await response.json() as object), success: true };
-    } catch (e: any) {
-      return { success: false, error: String(e) };
+
+    } else {
+      try {
+        const response = await fetch(`${getBackendUrl()}/api/tasks/url`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, max_duration_seconds: maxDurationSeconds ?? null, whisper_model: whisperModel ?? null }),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          let msg = text;
+          try { msg = JSON.parse(text).detail || text; } catch {}
+          return { success: false, error: msg };
+        }
+        return { ...(await response.json() as object), success: true };
+      } catch (e: any) {
+        return { success: false, error: String(e) };
+      }
     }
   });
 
