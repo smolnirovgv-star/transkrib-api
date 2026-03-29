@@ -15,10 +15,16 @@ export const BackendStartup: React.FC<Props> = ({ onReady }) => {
   );
 
   const [elapsed, setElapsed] = useState(0);
+  const [showSlowMessage, setShowSlowMessage] = useState(false);
   const onReadyRef = useRef(onReady);
   const startTimeRef = useRef(Date.now());
 
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowSlowMessage(true), 15000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (isDev) {
@@ -71,6 +77,13 @@ export const BackendStartup: React.FC<Props> = ({ onReady }) => {
         <div className="backend-startup-bar">
           <div className="backend-startup-bar-fill" style={{ width: pct + '%' }} />
         </div>
+        {showSlowMessage && (
+          <div style={{marginTop: 16, textAlign: 'center', color: '#888'}}>
+            <p>⏳ Первый запуск: скачиваем AI-модель (~250 МБ)</p>
+            <p>Это займёт 2–3 минуты только один раз.</p>
+            <p>При следующих запусках всё будет быстро ⚡</p>
+          </div>
+        )}
       </div>
     </div>
   );
