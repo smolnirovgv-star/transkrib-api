@@ -2,6 +2,7 @@
 
 import sys
 import os
+import base64
 import json
 import logging
 import subprocess
@@ -52,6 +53,17 @@ class DownloadService:
         title = self.get_title(url)
         output_template = str(output_dir / "%(title)s.%(ext)s")
 
+        # Создаём временный файл с cookies если есть переменная окружения
+        cookies_file = None
+        cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64')
+        if cookies_b64:
+            import tempfile
+            cookies_data = base64.b64decode(cookies_b64).decode('utf-8')
+            tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+            tmp.write(cookies_data)
+            tmp.close()
+            cookies_file = tmp.name
+
         cmd = [
             *_get_ytdlp_cmd(),
             "-S", "vcodec:h264,acodec:aac",
@@ -68,11 +80,15 @@ class DownloadService:
             "--add-header", "Sec-Fetch-Mode:navigate",
             "--extractor-args", "youtube:player_client=web,android",
         ]
+        if cookies_file:
+            cmd.extend(['--cookies', cookies_file])
         if self._ffmpeg_path:
             cmd.extend(["--ffmpeg-location", str(Path(self._ffmpeg_path).parent)])
         cmd.append(url)
 
         result = subprocess.run(cmd, capture_output=True, text=True)
+        if cookies_file and os.path.exists(cookies_file):
+            os.unlink(cookies_file)
         if result.returncode != 0:
             logger.error(f"Download error {url}: {result.stderr[-500:]}")
             return None, title

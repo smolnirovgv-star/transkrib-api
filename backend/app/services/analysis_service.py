@@ -78,6 +78,9 @@ class AnalysisService:
             messages=[{"role": "user", "content": prompt}],
         )
 
+        if not message.content:
+            logger.error("Claude returned empty content")
+            return None
         response_text = message.content[0].text.strip()
 
         try:
