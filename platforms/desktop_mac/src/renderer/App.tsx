@@ -319,7 +319,7 @@ const App: React.FC = () => {
   const trialAllowed = trialStarted && trialStatus !== null &&
     (trialStatus.state === 'active' || trialStatus.state === 'warning');
 
-  if (!isLicensed && !trialAllowed && !isDev && !showPasswordReset) return (
+  if (!isLicensed && !trialAllowed && !isDev && !showPasswordReset && !trialStarted) return (
     <SetupWizard
       onComplete={() => setIsLicensed(true)}
       onTrialStart={handleTrialStart}
