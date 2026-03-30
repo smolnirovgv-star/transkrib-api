@@ -31,8 +31,11 @@ class TranscriptionService:
                 download_root.mkdir(parents=True, exist_ok=True)
                 _os.environ.setdefault("HF_HOME", str(download_root))
                 logger.info(f"faster-whisper cache dir: {download_root}")
-            logger.info(f"Loading faster-whisper model: {self._model_name} ...")
-            self._model = WhisperModel(self._model_name, device="cpu", compute_type="int8")
+            logger.info(f"Loading faster-whisper model: {self._model_name} (cache: {download_root}) ...")
+            kwargs = {"device": "cpu", "compute_type": "int8"}
+            if download_root is not None:
+                kwargs["download_root"] = str(download_root)
+            self._model = WhisperModel(self._model_name, **kwargs)
             logger.info(f"faster-whisper model '{self._model_name}' ready")
 
     @property
