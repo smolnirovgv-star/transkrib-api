@@ -20,8 +20,15 @@ class TranscriptionService:
         if self._model is None:
             from faster_whisper import WhisperModel
             import os as _os
-            # Determine cache dir: use explicit path, env var, or default HF cache
+            import sys as _sys
+            # Determine cache dir: frozen bundle > explicit path > env var > default HF cache
             download_root = self._download_root
+            if getattr(_sys, "frozen", False):
+                # In PyInstaller onedir bundle: model is bundled in _internal/whisper_models/
+                _bundled = Path(_sys._MEIPASS) / "whisper_models"
+                if _bundled.exists():
+                    download_root = _bundled
+                    logger.info(f"faster-whisper: using bundled model from _MEIPASS: {download_root}")
             if download_root is None:
                 _env = _os.environ.get("APP_WHISPER_CACHE_DIR")
                 if _env:

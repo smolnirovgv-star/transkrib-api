@@ -36,6 +36,12 @@ faster_whisper_datas = [
      'faster_whisper/assets'),
 ]
 
+# Bundle faster-whisper tiny model (CTranslate2 format, ~75MB) to avoid re-download on first launch
+WHISPER_MODEL_DIR = r'C:/Users/Admin/AppData/Roaming/Transkrib/storage/hf_models/models--Systran--faster-whisper-tiny'
+whisper_model_datas = [
+    (WHISPER_MODEL_DIR, 'whisper_models/models--Systran--faster-whisper-tiny'),
+]
+
 # Analysis
 a = Analysis(
     [str(BACKEND_DIR / 'standalone_server.py')],
@@ -51,6 +57,8 @@ a = Analysis(
     datas=[
         # faster-whisper assets (VAD silero model)
         *faster_whisper_datas,
+        # faster-whisper tiny model bundled (avoids first-launch download)
+        *whisper_model_datas,
     ],
     hiddenimports=[
         # FastAPI ecosystem
