@@ -184,8 +184,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"ENV APP_WHISPER_CACHE_DIR={os.environ.get('APP_WHISPER_CACHE_DIR')}")
     logger.info(f"settings.storage_dir={settings.storage_dir}")
     logger.info(f"Whisper cache dir: {settings.whisper_cache_dir}")
-    _cached = list(settings.whisper_cache_dir.glob("*.pt"))
-    logger.info(f"Cached Whisper models: {[f.name for f in _cached]}")
+    # faster-whisper stores models in subfolders (HuggingFace cache format), not .pt files
+    _cached = [p.name for p in settings.whisper_cache_dir.iterdir() if p.is_dir()] if settings.whisper_cache_dir.exists() else []
+    logger.info(f"Cached faster-whisper models: {_cached}")
 
     # Validate FFmpeg
     from app.services.ffmpeg_service import FFmpegService
