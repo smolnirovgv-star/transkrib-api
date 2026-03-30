@@ -120,6 +120,7 @@ def run_pipeline(
     )
 
     # Step 4: Assemble
+    settings.temp_dir.mkdir(parents=True, exist_ok=True)
     progress.report(task_id, TaskState.ASSEMBLING, 0, "Сборка видео...")
     result_filename = storage.generate_result_filename(original_name)
     result_path = storage.result_dir / result_filename

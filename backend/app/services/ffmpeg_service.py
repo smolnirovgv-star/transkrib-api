@@ -242,7 +242,6 @@ class FFmpegService:
             self.ffmpeg_path, "-f", "concat", "-safe", "0",
             "-i", str(concat_file),
             "-c", "copy",
-            "-movflags", "+faststart",
             "-y", str(output_path),
         ]
         try:
