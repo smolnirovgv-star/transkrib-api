@@ -106,7 +106,11 @@ class FFmpegService:
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            logger.error(f"Convert timeout: {input_path.name}")
+            return False
         if result.returncode != 0:
             logger.error(f"Convert error {input_path.name}: {result.stderr[-500:]}")
             return False
@@ -116,15 +120,20 @@ class FFmpegService:
         return ok
 
     def cut_fragment(self, video_path: Path, start: str, end: str, output_path: Path) -> bool:
+        # Use stream copy - no re-encoding needed for cutting, ~100x faster on low-CPU servers
         cmd = [
             self.ffmpeg_path,
             "-ss", start, "-to", end,
             "-i", str(video_path),
-            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "192k",
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
             "-y", str(output_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except subprocess.TimeoutExpired:
+            logger.error(f"Cut timeout [{start}-{end}]")
+            return False
         if result.returncode != 0:
             logger.error(f"Cut error [{start}-{end}]: {result.stderr[-300:]}")
             return False
@@ -209,12 +218,16 @@ class FFmpegService:
         cmd = [self.ffmpeg_path] + inputs + [
             "-filter_complex", filter_complex,
             "-map", "[vout]", "-map", "[aout]",
-            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            logger.error("xfade merge timeout")
+            return False
         if result.returncode != 0:
             logger.error(f"xfade merge error: {result.stderr[-500:]}")
             return False
@@ -230,12 +243,16 @@ class FFmpegService:
         cmd = [
             self.ffmpeg_path, "-f", "concat", "-safe", "0",
             "-i", str(concat_file),
-            "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            logger.error("concat merge timeout")
+            return False
         if result.returncode != 0:
             logger.error(f"concat merge error: {result.stderr[-500:]}")
             return False
