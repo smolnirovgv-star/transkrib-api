@@ -54,12 +54,18 @@ class TranscriptionService:
         if on_progress:
             on_progress("starting")
 
-        segments_gen, info = self._model.transcribe(
-            str(video_path),
-            beam_size=1,
-            vad_filter=True,
-        )
-        language = info.language or "unknown"
+        try:
+            segments_gen, info = self._model.transcribe(
+                str(video_path),
+                beam_size=1,
+                vad_filter=True,
+            )
+            language = info.language or "unknown"
+        except (ValueError, Exception) as _vad_err:
+            # faster-whisper raises ValueError("max() arg is an empty sequence")
+            # when VAD finds no speech in the audio
+            logger.warning(f"faster-whisper VAD error (no speech?): {_vad_err}")
+            return "", "unknown", []
 
         raw_segments: list[dict] = []
         lines: list[str] = []

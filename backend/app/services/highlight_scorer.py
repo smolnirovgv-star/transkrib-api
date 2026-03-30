@@ -71,6 +71,7 @@ def score_phrases(
 
 " + prompt
 
+    score_map = {}
     try:
         client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
         message = client.messages.create(
@@ -82,6 +83,8 @@ def score_phrases(
         if response_text.startswith("```"):
             lines = response_text.split("\n")
             response_text = "\n".join(lines[1:-1])
+        scored_list = json.loads(response_text)
+        score_map = {item["index"]: item for item in scored_list if "index" in item}
     except Exception as e:
         logger.error(f"Claude scoring failed: {e} — using fallback score=5")
         score_map = {}
