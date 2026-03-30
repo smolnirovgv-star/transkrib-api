@@ -176,10 +176,8 @@ class FFmpegService:
                 shutil.copy2(str(cut_files[0]), str(output_path))
                 return True
 
-            success = self._merge_with_xfade(cut_files, durations, output_path, fade_duration)
-            if not success:
-                logger.warning("xfade failed, falling back to concat")
-                success = self._merge_with_concat(cut_files, output_path, tmp)
+            # Skip xfade (CPU/RAM intensive) — use concat+copy directly
+            success = self._merge_with_concat(cut_files, output_path, tmp)
             return success
 
     def _merge_with_xfade(
@@ -243,8 +241,7 @@ class FFmpegService:
         cmd = [
             self.ffmpeg_path, "-f", "concat", "-safe", "0",
             "-i", str(concat_file),
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-            "-c:a", "aac", "-b:a", "192k",
+            "-c", "copy",
             "-movflags", "+faststart",
             "-y", str(output_path),
         ]
