@@ -80,11 +80,20 @@ class TranscriptionService:
         if on_progress:
             on_progress("starting")
 
+        # Check if silero VAD model is available in the bundle
+        import sys as _sys, os as _os
+        _vad_available = True
+        if getattr(_sys, "frozen", False):
+            _vad_path = _os.path.join(_sys._MEIPASS, "faster_whisper", "assets", "silero_vad_v6.onnx")
+            _vad_available = _os.path.exists(_vad_path)
+            if not _vad_available:
+                logger.warning(f"[Whisper] silero_vad_v6.onnx not found in bundle — using vad_filter=False")
+
         try:
             segments_gen, info = self._model.transcribe(
                 str(video_path),
                 beam_size=1,
-                vad_filter=True,
+                vad_filter=_vad_available,
             )
             language = info.language or "unknown"
             raw_segments_raw = list(segments_gen)  # materialise generator inside try (VAD loads here)
