@@ -16,34 +16,19 @@ class TranscriptionService:
         self._model = None
 
     def _load_whisper_model(self, WhisperModel, cache_dir) -> object:
-        """Check cache first, download only if missing."""
+        """Load faster-whisper model — let it handle caching automatically."""
         import os as _os
-        # Check if model is already cached locally (glob for any version suffix)
-        import glob as _glob
-        _pattern = _os.path.join(str(cache_dir), f"models--Systran--faster-whisper-{self._model_name}*") if cache_dir else None
-        _matches = _glob.glob(_pattern) if _pattern else []
-        _has_cache = bool(_matches) and any(
-            _os.path.exists(_os.path.join(m, "snapshots")) for m in _matches
+        # Remove any offline flags that could block downloads
+        _os.environ.pop("HF_HUB_OFFLINE", None)
+        _os.environ.pop("TRANSFORMERS_OFFLINE", None)
+        # faster-whisper handles caching to download_root automatically
+        logger.info(f"[Whisper] Loading model '{self._model_name}' from {cache_dir}")
+        return WhisperModel(
+            self._model_name,
+            device="cpu",
+            compute_type="int8",
+            download_root=str(cache_dir) if cache_dir else None,
         )
-        logger.info(f"[Whisper] Cache check: {_pattern} -> {'found' if _has_cache else 'not found'}")
-
-        if _has_cache:
-            logger.info(f"[Whisper] Loading from cache: {cache_dir}")
-            _os.environ["HF_HUB_OFFLINE"] = "1"
-            try:
-                return WhisperModel(
-                    self._model_name, device="cpu", compute_type="int8",
-                    download_root=str(cache_dir) if cache_dir else None,
-                )
-            finally:
-                _os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            logger.info(f"[Whisper] Downloading model to: {cache_dir}")
-            _os.environ.pop("HF_HUB_OFFLINE", None)
-            return WhisperModel(
-                self._model_name, device="cpu", compute_type="int8",
-                download_root=str(cache_dir) if cache_dir else None,
-            )
 
     def ensure_model(self) -> None:
         """Loads faster-whisper model into memory on first call (lazy). Subsequent calls are no-ops."""
