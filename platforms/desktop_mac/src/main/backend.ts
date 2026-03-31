@@ -60,3 +60,14 @@ export function stopBackend(): void {
 
 export function getBackendUrl(): string { return API_BASE_URL; }
 export function isBackendRunning(): boolean { return true; }
+
+// Keep-alive: будим Render при старте и пингуем каждые 10 минут
+const RENDER_URL = 'https://transkrib-api.onrender.com/api/system/license';
+const pingRender = () => {
+  const https = require('https');
+  https.get(RENDER_URL, (res: any) => res.resume()).on('error', () => {});
+};
+// Будим сразу при старте приложения
+setTimeout(pingRender, 2000);
+// Пингуем каждые 10 минут чтобы не засыпал
+setInterval(pingRender, 10 * 60 * 1000);
