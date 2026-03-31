@@ -18,9 +18,14 @@ class TranscriptionService:
     def _load_whisper_model(self, WhisperModel, cache_dir) -> object:
         """Check cache first, download only if missing."""
         import os as _os
-        # Check if model is already cached locally
-        _model_path = _os.path.join(str(cache_dir), f"models--Systran--faster-whisper-{self._model_name}") if cache_dir else None
-        _has_cache = bool(_model_path and _os.path.exists(_model_path) and any(_os.scandir(_model_path)))
+        # Check if model is already cached locally (glob for any version suffix)
+        import glob as _glob
+        _pattern = _os.path.join(str(cache_dir), f"models--Systran--faster-whisper-{self._model_name}*") if cache_dir else None
+        _matches = _glob.glob(_pattern) if _pattern else []
+        _has_cache = bool(_matches) and any(
+            _os.path.exists(_os.path.join(m, "snapshots")) for m in _matches
+        )
+        logger.info(f"[Whisper] Cache check: {_pattern} -> {'found' if _has_cache else 'not found'}")
 
         if _has_cache:
             logger.info(f"[Whisper] Loading from cache: {cache_dir}")
