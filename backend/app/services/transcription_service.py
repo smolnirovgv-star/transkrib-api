@@ -15,34 +15,50 @@ class TranscriptionService:
         self._download_root = download_root
         self._model = None
 
+    def _load_whisper_model(self, WhisperModel, cache_dir) -> object:
+        """Try offline first, fall back to download."""
+        import os as _os
+        # Try offline (cached)
+        try:
+            _os.environ["HF_HUB_OFFLINE"] = "1"
+            model = WhisperModel(
+                self._model_name,
+                device="cpu",
+                compute_type="int8",
+                download_root=str(cache_dir) if cache_dir else None,
+                local_files_only=True,
+            )
+            logger.info(f"[Whisper] Loaded from cache: {cache_dir}")
+            return model
+        except Exception:
+            pass
+        finally:
+            _os.environ.pop("HF_HUB_OFFLINE", None)
+        # Not cached — download first time
+        logger.info(f"[Whisper] Downloading model to: {cache_dir}")
+        return WhisperModel(
+            self._model_name,
+            device="cpu",
+            compute_type="int8",
+            download_root=str(cache_dir) if cache_dir else None,
+        )
+
     def ensure_model(self) -> None:
         """Loads faster-whisper model into memory on first call (lazy). Subsequent calls are no-ops."""
         if self._model is None:
             from faster_whisper import WhisperModel
             import os as _os
-            import sys as _sys
-            # Determine cache dir: frozen bundle > explicit path > env var > default HF cache
-            download_root = self._download_root
-            if getattr(_sys, "frozen", False):
-                # In PyInstaller onedir bundle: model is bundled in _internal/whisper_models/
-                _bundled = Path(_sys._MEIPASS) / "whisper_models"
-                if _bundled.exists():
-                    download_root = _bundled
-                    logger.info(f"faster-whisper: using bundled model from _MEIPASS: {download_root}")
-            if download_root is None:
+            # Determine cache dir: explicit path > env var > default HF cache
+            cache_dir = self._download_root
+            if cache_dir is None:
                 _env = _os.environ.get("APP_WHISPER_CACHE_DIR")
                 if _env:
-                    download_root = Path(_env)
-                    logger.info(f"faster-whisper: using APP_WHISPER_CACHE_DIR: {download_root}")
-            if download_root is not None:
-                download_root.mkdir(parents=True, exist_ok=True)
-                _os.environ.setdefault("HF_HOME", str(download_root))
-                logger.info(f"faster-whisper cache dir: {download_root}")
-            logger.info(f"Loading faster-whisper model: {self._model_name} (cache: {download_root}) ...")
-            kwargs = {"device": "cpu", "compute_type": "int8"}
-            if download_root is not None:
-                kwargs["download_root"] = str(download_root)
-            self._model = WhisperModel(self._model_name, **kwargs)
+                    cache_dir = Path(_env)
+                    logger.info(f"faster-whisper: using APP_WHISPER_CACHE_DIR: {cache_dir}")
+            if cache_dir is not None:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                _os.environ.setdefault("HF_HOME", str(cache_dir))
+            self._model = self._load_whisper_model(WhisperModel, cache_dir)
             logger.info(f"faster-whisper model '{self._model_name}' ready")
 
     @property
