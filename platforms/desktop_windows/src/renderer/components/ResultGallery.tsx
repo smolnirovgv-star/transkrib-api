@@ -42,18 +42,21 @@ export const ResultGallery: React.FC<GalleryProps> = ({ onResultCountChange }) =
   const [segPreview, setSegPreview] = useState<SegPreviewState | null>(null);
   const [videoSrc, setVideoSrc] = useState<string>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const deletedFiles = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const load = () => {
       if (window.electronAPI) {
         window.electronAPI.listResults().then(r => {
-          setResults(r);
-          onResultCountChange?.(r.length);
+          const filtered = r.filter((item: any) => !deletedFiles.current.has(item.filename));
+          setResults(filtered);
+          onResultCountChange?.(filtered.length);
         }).catch(() => {});
       } else {
         api.listResults().then(r => {
-          setResults(r as any);
-          onResultCountChange?.(r.length);
+          const filtered = (r as any[]).filter(item => !deletedFiles.current.has(item.filename));
+          setResults(filtered);
+          onResultCountChange?.(filtered.length);
         }).catch(() => {});
       }
     };
@@ -140,6 +143,7 @@ export const ResultGallery: React.FC<GalleryProps> = ({ onResultCountChange }) =
       } else {
         await fetch('http://127.0.0.1:8000/api/tasks/result/' + encodeURIComponent(filename), { method: 'DELETE' });
       }
+      deletedFiles.current.add(filename);
       const next = results.filter(r => r.filename !== filename);
       setResults(next);
       onResultCountChange?.(next.length);
