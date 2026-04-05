@@ -545,6 +545,28 @@ function registerIpcHandlers(): void {
     }
   });
 
+  ipcMain.handle('create-payment', async (_event, data: { plan: string; device_id: string; user_email: string }) => {
+    const { net } = require('electron');
+    return new Promise((resolve) => {
+      const request = net.request({
+        method: 'POST',
+        url: 'https://transkrib-api.onrender.com/api/payments/create',
+      });
+      request.setHeader('Content-Type', 'application/json');
+      let body = '';
+      request.on('response', (response: any) => {
+        response.on('data', (chunk: any) => { body += chunk; });
+        response.on('end', () => {
+          try { resolve(JSON.parse(body)); }
+          catch { resolve({ error: body }); }
+        });
+      });
+      request.on('error', (err: any) => resolve({ error: err.message }));
+      request.write(JSON.stringify(data));
+      request.end();
+    });
+  });
+
   ipcMain.on('window:close', () => {
     mainWindow?.close();
   });

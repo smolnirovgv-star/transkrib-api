@@ -50,6 +50,7 @@ export interface ElectronAPI {
   onWindowMaximized: (callback: (maximized: boolean) => void) => () => void;
   onDeepLink: (callback: (url: string) => void) => () => void;
   openExternal: (url: string) => void;
+  createPayment: (data: { plan: string; device_id: string; user_email: string }) => Promise<{ payment_url?: string; error?: string }>;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -172,6 +173,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: (url: string): void => {
     ipcRenderer.send('shell:openExternal', url);
+  },
+
+  createPayment: (data: { plan: string; device_id: string; user_email: string }): Promise<{ payment_url?: string; error?: string }> => {
+    return ipcRenderer.invoke('create-payment', data);
   },
 
   onDeepLink: (callback: (url: string) => void): (() => void) => {

@@ -313,21 +313,13 @@ const App: React.FC = () => {
       })();
 
       console.log('Sending payment:', { plan, device_id: deviceId, user_email: user?.email });
-      const response = await fetch('https://transkrib-api.onrender.com/api/payments/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plan: plan,
-          device_id: deviceId,
-          user_email: user.email
-        })
+      const data = await (window as any).electronAPI.createPayment({
+        plan,
+        device_id: deviceId,
+        user_email: user.email
       });
-
-      console.log('Payment response status:', response.status);
-      if (!response.ok) throw new Error('Payment error');
-
-      const data = await response.json();
       console.log('Payment data:', data);
+      if (data.error) throw new Error(data.error);
 
       if (data.payment_url) {
         if ((window as any).electronAPI?.openExternal) {
