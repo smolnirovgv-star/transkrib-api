@@ -50,3 +50,14 @@ faster_whisper_datas = [
 - [ ] gh release edit v1.0.1 --draft=false --latest выполнен
 - [ ] Проверить transkrib.spec — silero_vad_v6.onnx в datas
 - [ ] Протестировать: установка → запуск → обработка видео
+
+### 8. Кнопка "Сбросить" пароль не отправляет письмо восстановления
+**Когда:** Site URL в Supabase был установлен на /parol-smena и при попытке сброса пользователь не получал письмо восстановления.
+**Решение:** Site URL в Supabase Dashboard = https://transkrib.su
+Для корректной работы восстановления используется redirectTo в коде:
+```
+supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: 'https://transkrib.su/parol-smena'
+})
+```
+**НЕЛЬЗЯ менять Site URL в Supabase на конкретную страницу восстановления!**
