@@ -312,7 +312,7 @@ const App: React.FC = () => {
         return id;
       })();
 
-      console.log('Payment request:', { plan, device_id: deviceId, user_email: user.email });
+      console.log('Sending payment:', { plan, device_id: deviceId, user_email: user?.email });
       const response = await fetch('https://transkrib-api.onrender.com/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -337,8 +337,9 @@ const App: React.FC = () => {
         }
       }
     } catch (err: any) {
-      console.error('Payment error details:', err.message, err);
-      alert('Ошибка: ' + (err.message || 'Неизвестная ошибка'));
+      console.error('Payment error:', err);
+      const msg = err?.message || JSON.stringify(err) || 'Неизвестная ошибка';
+      alert('Ошибка при создании платежа: ' + msg);
     }
   };
 
