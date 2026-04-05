@@ -545,23 +545,22 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle('create-payment', async (_event, data: { plan: string; device_id: string; user_email: string }) => {
-    const { net } = require('electron');
-    return new Promise((resolve) => {
+  ipcMain.handle('create-payment', async (_, data: { plan: string; device_id: string; user_email: string }) => {
+    return new Promise((resolve, reject) => {
       const request = net.request({
         method: 'POST',
-        url: 'https://transkrib-api.onrender.com/api/payments/create',
+        url: 'https://transkrib-api.onrender.com/api/payments/create'
       });
       request.setHeader('Content-Type', 'application/json');
       let body = '';
-      request.on('response', (response: any) => {
-        response.on('data', (chunk: any) => { body += chunk; });
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { body += chunk.toString(); });
         response.on('end', () => {
           try { resolve(JSON.parse(body)); }
-          catch { resolve({ error: body }); }
+          catch(e) { reject(new Error('Parse error: ' + body)); }
         });
       });
-      request.on('error', (err: any) => resolve({ error: err.message }));
+      request.on('error', reject);
       request.write(JSON.stringify(data));
       request.end();
     });
