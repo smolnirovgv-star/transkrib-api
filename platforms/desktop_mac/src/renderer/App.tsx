@@ -284,9 +284,59 @@ const App: React.FC = () => {
     setTimeout(() => uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 420);
   };
 
-  const handlePlanSelect = (planId: string) => {
-    if (planId === 'trial') { handleTrialStart(); setScreen(0); }
-    else { openRegister(); }
+  const handlePlanSelect = async (planId: string) => {
+    if (planId === 'trial') {
+      handleTrialStart();
+      setScreen(0);
+      return;
+    }
+
+    // Если не авторизован - сначала регистрация
+    if (!user) {
+      openRegister();
+      return;
+    }
+
+    // Авторизован - создаём платёж через YooKassa
+    try {
+      const planMap: Record<string, string> = {
+        'basic': 'BASE',
+        'standard': 'STANDARD',
+        'pro': 'PRO'
+      };
+
+      const plan = planMap[planId] || planId.toUpperCase();
+      const deviceId = localStorage.getItem('device_id') || (() => {
+        const id = crypto.randomUUID();
+        localStorage.setItem('device_id', id);
+        return id;
+      })();
+
+      const response = await fetch('https://transkrib-api.onrender.com/api/payments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: plan,
+          device_id: deviceId,
+          user_email: user.email
+        })
+      });
+
+      if (!response.ok) throw new Error('Payment error');
+
+      const data = await response.json();
+
+      if (data.payment_url) {
+        if ((window as any).electronAPI?.openExternal) {
+          (window as any).electronAPI.openExternal(data.payment_url);
+        } else {
+          window.open(data.payment_url, '_blank');
+        }
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      alert('Ошибка при создании платежа. Попробуйте снова.');
+    }
   };
 
   // Email recovery link: bypass backend startup and license checks entirely
