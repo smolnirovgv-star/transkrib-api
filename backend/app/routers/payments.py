@@ -14,14 +14,14 @@ YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID", "")
 YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY", "")
 
 PLANS = {
-    "BASE":  {"amount": "500.00",  "currency": "RUB", "description": "Transkrib Base — 30 дней", "days": 30},
-    "STND":  {"amount": "1900.00", "currency": "RUB", "description": "Transkrib Standard — 30 дней", "days": 30},
-    "PREM":  {"amount": "9900.00", "currency": "RUB", "description": "Transkrib Pro — 365 дней", "days": 365},
+    "BASE":     {"amount": "450.00",  "currency": "RUB", "description": "Transkrib SmartCut AI - Базовый (10 дней)",    "days": 10},
+    "STANDARD": {"amount": "1700.00", "currency": "RUB", "description": "Transkrib SmartCut AI - Стандарт (30 дней)",  "days": 30},
+    "PRO":      {"amount": "8900.00", "currency": "RUB", "description": "Transkrib SmartCut AI - Про (365 дней)",       "days": 365},
 }
 
 
 class CreatePaymentRequest(BaseModel):
-    plan: str          # BASE / STND / PREM
+    plan: str          # BASE / STANDARD / PRO
     user_email: str
     return_url: str = "https://transkrib-api.onrender.com/api/payments/success"
 
