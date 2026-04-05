@@ -79,11 +79,8 @@ export const AuthModal: React.FC<Props> = ({ initialView = 'login', linkExpired,
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault(); reset(); setLoading(true);
     try {
-      const redirectTo = (window as any).electronAPI
-        ? 'transkrib://reset-password'
-        : window.location.origin + '/reset-password';
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectTo,
+        redirectTo: 'https://transkrib.su/parol-smena',
       });
       if (error) throw error;
       setMessage(t('auth.successResetSent').replace('{email}', email));
