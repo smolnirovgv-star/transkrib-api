@@ -312,6 +312,7 @@ const App: React.FC = () => {
         return id;
       })();
 
+      console.log('Payment request:', { plan, device_id: deviceId, user_email: user.email });
       const response = await fetch('https://transkrib-api.onrender.com/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -322,9 +323,11 @@ const App: React.FC = () => {
         })
       });
 
+      console.log('Payment response status:', response.status);
       if (!response.ok) throw new Error('Payment error');
 
       const data = await response.json();
+      console.log('Payment data:', data);
 
       if (data.payment_url) {
         if ((window as any).electronAPI?.openExternal) {
@@ -333,9 +336,9 @@ const App: React.FC = () => {
           window.open(data.payment_url, '_blank');
         }
       }
-    } catch (err) {
-      console.error('Payment error:', err);
-      alert('Ошибка при создании платежа. Попробуйте снова.');
+    } catch (err: any) {
+      console.error('Payment error details:', err.message, err);
+      alert('Ошибка: ' + (err.message || 'Неизвестная ошибка'));
     }
   };
 
