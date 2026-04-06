@@ -285,6 +285,8 @@ const App: React.FC = () => {
   };
 
   const handlePlanSelect = async (planId: string) => {
+    console.log('handlePlanSelect called:', planId, 'user:', user?.email, 'user exists:', !!user);
+    alert('Plan clicked: ' + planId + ' | User: ' + (user?.email || 'NOT LOGGED IN'));
     if (planId === 'trial') {
       handleTrialStart();
       setScreen(0);
