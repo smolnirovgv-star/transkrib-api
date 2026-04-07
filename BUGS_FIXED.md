@@ -61,3 +61,16 @@ supabase.auth.resetPasswordForEmail(email, {
 })
 ```
 **НЕЛЬЗЯ менять Site URL в Supabase на конкретную страницу восстановления!**
+
+### 9. Кнопка "Купить" не работала
+**Причина:** fetch из Electron renderer process блокируется.
+**Решение:** перенести запрос в main process через IPC:
+- preload: createPayment через ipcRenderer.invoke
+- main: ipcMain.handle через electron.net
+- renderer: window.electronAPI.createPayment(...)
+### 10. Кнопка "Купить" — YOOKASSA_SECRET_KEY должен быть боевым
+**Когда:** при обновлении env vars на Render случайно вставляется тестовый ключ test_...
+**Решение:** YOOKASSA_SECRET_KEY на Render ВСЕГДА должен быть боевым ключом live_...ZJp8
+из файла "ключи для работы/secret_key ю-касса.txt"
+**Проверка:** curl /api/payments/create → если 401 invalid_credentials → ключ тестовый!
+**Никогда:** не вставлять test_... ключ в боевой Render
