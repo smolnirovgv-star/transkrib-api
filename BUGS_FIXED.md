@@ -74,3 +74,23 @@ supabase.auth.resetPasswordForEmail(email, {
 из файла "ключи для работы/secret_key ю-касса.txt"
 **Проверка:** curl /api/payments/create → если 401 invalid_credentials → ключ тестовый!
 **Никогда:** не вставлять test_... ключ в боевой Render
+
+## v1.2.0 Global -- Изменения
+
+### Новые функции:
+1. Stripe платежи для международных пользователей
+   - POST /api/stripe/create -- Checkout Session
+   - POST /api/stripe/webhook -- активация лицензии
+   - Цены: BASE $5 / STANDARD $19 / PRO $99
+   - Frontend: план с суффиксом _global -> Stripe
+
+2. Контекстное меню правой кнопки мыши
+   - Вырезать / Копировать / Вставить / Выделить все
+   - Работает во всех input полях
+
+3. Светлая тема -- исправлена контрастность
+   - Кабинет пользователя: тёмный текст на светлом фоне
+
+### Для деплоя v1.2.0 нужно добавить в Render:
+- STRIPE_SECRET_KEY=sk_live_...
+- STRIPE_WEBHOOK_SECRET=whsec_...
