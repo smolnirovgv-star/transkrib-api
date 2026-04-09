@@ -31,3 +31,4 @@ python-dotenv==1.0.1
 # Image generation (icon + Stability AI preview)
 pillow>=10.0.0
 requests>=2.31.0
+stripe>=7.0.0
