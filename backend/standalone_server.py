@@ -299,6 +299,11 @@ app.include_router(stripe_router)
 app.include_router(lemon_router)
 app.include_router(bot_tasks_router)
 
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+
 # License management endpoints
 from fastapi import HTTPException
 from pydantic import BaseModel
