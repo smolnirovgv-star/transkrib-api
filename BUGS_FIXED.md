@@ -94,3 +94,11 @@ supabase.auth.resetPasswordForEmail(email, {
 ### Для деплоя v1.2.0 нужно добавить в Render:
 - STRIPE_SECRET_KEY=sk_live_...
 - STRIPE_WEBHOOK_SECRET=whsec_...
+
+### Культурная локализация v1.2.0 Global
+1. 7 языков: ru/en/hi/ko/zh/ja/pt
+2. Каждый язык -- уникальная цветовая тема
+3. Автоматическая смена шрифта (Noto Sans для азиатских языков)
+4. Приветствие на родном языке (toast 2 сек)
+5. Эмодзи по культуре страны
+6. lang атрибут для правильного рендера
