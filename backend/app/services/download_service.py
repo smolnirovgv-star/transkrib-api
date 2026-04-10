@@ -20,7 +20,7 @@ def _get_ytdlp_cmd() -> list[str]:
     so we need to use the bundled yt-dlp.exe instead.
     """
     if getattr(sys, "frozen", False):
-        # PyInstaller frozen mode â use bundled yt-dlp.exe
+        # PyInstaller frozen mode — use bundled yt-dlp.exe
         ytdlp_path = os.environ.get("YTDLP_PATH")
         if ytdlp_path and Path(ytdlp_path).exists():
             return [ytdlp_path]
@@ -34,7 +34,7 @@ def _get_ytdlp_cmd() -> list[str]:
         logger.error("yt-dlp.exe not found in frozen bundle")
         raise FileNotFoundError("yt-dlp.exe not found")
 
-    # Not frozen â use python -m yt_dlp
+    # Not frozen — use python -m yt_dlp
     return [sys.executable, "-m", "yt_dlp"]
 
 
@@ -53,7 +53,7 @@ class DownloadService:
         title = self.get_title(url)
         output_template = str(output_dir / "%(title)s.%(ext)s")
 
-        # Ð¡Ð¾Ð·Ð´Ð°ÑÐ¼ Ð²ÑÐµÐ¼ÐµÐ½Ð½ÑÐ¹ ÑÐ°Ð¹Ð» Ñ cookies ÐµÑÐ»Ð¸ ÐµÑÑÑ Ð¿ÐµÑÐµÐ¼ÐµÐ½Ð½Ð°Ñ Ð¾ÐºÑÑÐ¶ÐµÐ½Ð¸Ñ
+        # Создаём временный файл с cookies если есть переменная окружения
         cookies_file = None
         cookies_b64 = os.environ.get('YOUTUBE_COOKIES_B64')
         if cookies_b64:
@@ -71,7 +71,7 @@ class DownloadService:
             "--output", output_template,
             "--no-playlist",
             "--quiet", "--progress",
-            # ÐÐ±ÑÐ¾Ð´ Ð±Ð»Ð¾ÐºÐ¸ÑÐ¾Ð²ÐºÐ¸ YouTube Ð½Ð° ÑÐµÑÐ²ÐµÑÐ°Ñ
+            # Обход блокировки YouTube на серверах
             "--extractor-retries", "3",
             "--socket-timeout", "30",
             "--add-header", "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
