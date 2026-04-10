@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Whisper
     whisper_model: str = "tiny"
-    max_audio_duration: int = 0  # 0 = no limit
+    max_audio_duration: int = 600  # 10 min limit
 
     # Claude
     anthropic_api_key: str = ""
