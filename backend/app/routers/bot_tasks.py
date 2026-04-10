@@ -18,10 +18,9 @@ logger = logging.getLogger("video_processor.bot_tasks")
 
 router = APIRouter()
 
-# In-memory task store
 tasks_store: dict = {}
 
-DOWNLOAD_TIMEOUT = 120  # seconds
+DOWNLOAD_TIMEOUT = 120
 
 
 class TaskCreate(BaseModel):
@@ -31,8 +30,8 @@ class TaskCreate(BaseModel):
     language: Optional[str] = "auto"
 
 
-async def transcribe_with_groq(audio_path: str, language: str = "auto") -> str:
-    """Transcribe audio using Groq Whisper API (free, ~3 sec)."""
+def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
+    """Transcribe audio using Groq Whisper API (synchronous)."""
     groq_key = os.environ.get("GROQ_API_KEY", "")
     if not groq_key:
         raise ValueError("GROQ_API_KEY not set in environment")
@@ -41,45 +40,50 @@ async def transcribe_with_groq(audio_path: str, language: str = "auto") -> str:
 
     with open(audio_path, "rb") as f:
         files = {"file": (os.path.basename(audio_path), f, "audio/mpeg")}
-        data = {
-            "model": "whisper-large-v3-turbo",
-            "response_format": "text",
-        }
+        data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
         if language and language != "auto":
             data["language"] = language
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.post(
                 api_url,
-                headers={"Authorization": f"Bearer {groq_key}"},
+                headers={"Authorization": "Bearer " + groq_key},
                 files=files,
                 data=data,
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"Groq API error {resp.status_code}: {resp.text[:300]}")
+                raise RuntimeError(
+                    "Groq API error " + str(resp.status_code) + ": " + resp.text[:300]
+                )
             return resp.text
 
 
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
-    audio_path = f"/tmp/{task_id}.mp3"
+    audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
     try:
         tasks_store[task_id]["status"] = "processing"
-        logger.info(f"[bot_tasks] {task_id}: starting download for {url[:80]}")
+        logger.info("[bot_tasks] %s: starting download for %s", task_id, url[:80])
 
         import yt_dlp
 
         ydl_opts = {
             "format": "bestaudio/best",
-            "outtmpl": f"/tmp/{task_id}",
-            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}],
+            "outtmpl": "/tmp/" + task_id,
+            "postprocessors": [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+            ],
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 30,
             "retries": 3,
             "extractor_retries": 3,
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
             },
             "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
         }
@@ -88,50 +92,62 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         if cookies_b64:
             try:
                 cookies_data = base64.b64decode(cookies_b64).decode("utf-8")
-                tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+                tmp = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False
+                )
                 tmp.write(cookies_data)
                 tmp.close()
                 cookies_file = tmp.name
                 ydl_opts["cookiefile"] = cookies_file
             except Exception as ce:
-                logger.warning(f"[bot_tasks] {task_id}: cookies error: {ce}")
+                logger.warning("[bot_tasks] %s: cookies error: %s", task_id, ce)
 
         def _download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-        await asyncio.wait_for(asyncio.to_thread(_download), timeout=DOWNLOAD_TIMEOUT)
-        logger.info(f"[bot_tasks] {task_id}: audio downloaded OK")
+        await asyncio.wait_for(
+            asyncio.to_thread(_download), timeout=DOWNLOAD_TIMEOUT
+        )
+        logger.info("[bot_tasks] %s: audio downloaded OK", task_id)
 
         if not os.path.exists(audio_path):
             for ext in [".mp3", ".m4a", ".webm", ".opus"]:
-                alt = f"/tmp/{task_id}{ext}"
+                alt = "/tmp/" + task_id + ext
                 if os.path.exists(alt):
                     audio_path = alt
                     break
             else:
-                raise FileNotFoundError(f"Audio not found at /tmp/{task_id}.*")
+                raise FileNotFoundError("Audio not found at /tmp/" + task_id + ".*")
 
         file_size = os.path.getsize(audio_path)
-        logger.info(f"[bot_tasks] {task_id}: audio {file_size} bytes, sending to Groq Whisper")
+        logger.info(
+            "[bot_tasks] %s: audio %d bytes, sending to Groq Whisper",
+            task_id,
+            file_size,
+        )
 
-        text = await transcribe_with_groq(audio_path, language)
-        logger.info(f"[bot_tasks] {task_id}: transcription done ({len(text)} chars)")
+        text = await asyncio.to_thread(
+            transcribe_with_groq_sync, audio_path, language
+        )
+        logger.info(
+            "[bot_tasks] %s: transcription done (%d chars)", task_id, len(text)
+        )
 
         tasks_store[task_id]["status"] = "done"
         tasks_store[task_id]["transcription"] = text
 
     except asyncio.TimeoutError:
-        logger.error(f"[bot_tasks] {task_id}: TIMEOUT during download")
+        logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = "Timeout: download took too long"
     except Exception as e:
-        logger.error(f"[bot_tasks] {task_id}: error - {e}", exc_info=True)
+        logger.error("[bot_tasks] %s: error - %s", task_id, e, exc_info=True)
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = str(e)[:500]
     finally:
         for ext in [".mp3", ".m4a", ".webm", ".opus", ""]:
-            p = f"/tmp/{task_id}{ext}"
+            p = "/tmp/" + task_id + ext
             if os.path.exists(p):
                 os.remove(p)
         if cookies_file and os.path.exists(cookies_file):
@@ -143,10 +159,14 @@ async def create_task(body: TaskCreate, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
     tasks_store[task_id] = {"status": "pending", "task_id": task_id}
     background_tasks.add_task(
-        run_transcription, task_id, body.url,
-        body.cut_minutes, body.format, body.language,
+        run_transcription,
+        task_id,
+        body.url,
+        body.cut_minutes,
+        body.format,
+        body.language,
     )
-    logger.info(f"[bot_tasks] created task {task_id} for url={body.url[:60]}")
+    logger.info("[bot_tasks] created task %s for url=%s", task_id, body.url[:60])
     return {"task_id": task_id, "status": "pending"}
 
 
