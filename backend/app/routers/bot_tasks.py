@@ -103,7 +103,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
         text = await asyncio.wait_for(
             asyncio.to_thread(_transcribe),
-            timeout=300,
+            timeout=600,  # 10 min for Whisper on free tier
         )
         logger.info(f"[bot_tasks] {task_id}: transcription done ({len(text)} chars)")
 
