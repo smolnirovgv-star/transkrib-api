@@ -128,6 +128,9 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
         import yt_dlp
 
+        print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
+        logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
+
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": "/tmp/" + task_id,
@@ -141,12 +144,17 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             "extractor_retries": 3,
             "http_headers": {
                 "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+                    "Mobile/15E148 Safari/604.1"
                 ),
             },
-            "extractor_args": {"youtube": {"player_client": ["tv", "mweb", "web"]}},
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["ios", "web_creator"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
         }
 
         cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64")
