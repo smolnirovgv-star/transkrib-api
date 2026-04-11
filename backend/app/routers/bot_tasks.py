@@ -146,7 +146,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
             },
-            "extractor_args": {"youtube": {"player_client": ["web", "android"]}},
+            "extractor_args": {"youtube": {"player_client": ["tv", "mweb", "web"]}},
         }
 
         cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64")
