@@ -122,39 +122,64 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
 
 def download_via_cobalt(url: str, task_id: str) -> None:
     """Level 0: Download audio via cobalt.tools API -- works for YouTube from any IP."""
-    api_url = "https://api.cobalt.tools"
+    output_path = "/tmp/" + task_id + ".mp3"
+
+    # Try multiple cobalt instances in order
+    instances = [
+        "https://api.cobalt.tools",
+        "https://cobalt-api.kwiatekmiki.com",
+        "https://cobalt.canine.tools",
+    ]
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
     payload = {
         "url": url,
+        "downloadMode": "audio",
         "audioFormat": "mp3",
-        "isAudioOnly": True,
-        "filenameStyle": "basic",
     }
 
-    resp = requests.post(api_url, json=payload, headers=headers, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
+    last_error = None
+    for api_url in instances:
+        try:
+            print(f"[Cobalt] Trying {api_url} for: {url}")
+            resp = requests.post(api_url, json=payload, headers=headers, timeout=30)
+            print(f"[Cobalt] Response status: {resp.status_code}, body: {resp.text[:500]}")
+            resp.raise_for_status()
+            data = resp.json()
 
-    if data.get("status") == "error":
-        raise Exception(f"Cobalt error: {data.get('error', {}).get('code', 'unknown')}")
+            status = data.get("status")
+            if status == "error":
+                raise Exception(f"Cobalt error: {data}")
 
-    download_url = data.get("url")
-    if not download_url:
-        raise Exception("Cobalt: no download URL returned")
+            download_url = data.get("url")
+            if not download_url:
+                raise Exception(f"Cobalt: no URL in response: {data}")
 
-    audio_resp = requests.get(download_url, timeout=120, stream=True)
-    audio_resp.raise_for_status()
+            print(f"[Cobalt] Downloading from: {download_url[:100]}...")
+            audio_resp = requests.get(download_url, timeout=180, stream=True)
+            audio_resp.raise_for_status()
 
-    output_path = "/tmp/" + task_id + ".mp3"
-    with open(output_path, "wb") as f:
-        for chunk in audio_resp.iter_content(chunk_size=8192):
-            f.write(chunk)
+            with open(output_path, "wb") as f:
+                for chunk in audio_resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
 
-    print(f"[bot_tasks] {task_id}: Downloaded via cobalt.tools API")
-    logger.info("[bot_tasks] %s: Downloaded via cobalt.tools API", task_id)
+            file_size = os.path.getsize(output_path)
+            print(f"[Cobalt] Downloaded OK, size: {file_size} bytes")
+            if file_size < 1000:
+                raise Exception(f"Cobalt: file too small ({file_size} bytes)")
+
+            print(f"[bot_tasks] {task_id}: Downloaded via cobalt ({api_url})")
+            logger.info("[bot_tasks] %s: Downloaded via cobalt (%s)", task_id, api_url)
+            return
+
+        except Exception as e:
+            print(f"[Cobalt] {api_url} failed: {e}")
+            last_error = e
+            continue
+
+    raise Exception(f"All cobalt instances failed. Last error: {last_error}")
 
 
 def _get_cookie_file() -> Optional[str]:
