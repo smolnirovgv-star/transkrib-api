@@ -22,6 +22,66 @@ tasks_store: dict = {}
 
 DOWNLOAD_TIMEOUT = 120
 
+FORMATTING_PROMPT = """Ты — профессиональный редактор текста. Тебе дана сырая транскрипция видео/аудио.
+
+Твоя задача — превратить её в красивый, структурированный текст для удобного чтения.
+
+Правила форматирования:
+1. Добавь краткий заголовок (тема текста) в начале, оберни его в <b>тег</b>
+2. Раздели текст на логические абзацы (по 2-4 предложения)
+3. Если в тексте есть несколько тем/разделов — добавь подзаголовки в <b>теги</b>
+4. Исправь очевидные ошибки распознавания речи
+5. Убери слова-паразиты (ну, типа, как бы, вот, э-э-э) если они не несут смысла
+6. Сохрани весь смысл и содержание оригинала — ничего не добавляй от себя
+7. Используй только HTML-теги: <b>жирный</b>, <i>курсив</i> — никакого Markdown
+8. НЕ используй теги <h1>, <h2>, <p> — только <b> и <i> и простые переносы строк
+9. Между абзацами ставь пустую строку
+
+Верни ТОЛЬКО отформатированный текст, без пояснений."""
+
+
+def format_with_claude_sync(raw_text: str) -> str:
+    """Format raw transcription into structured readable text using Claude API."""
+    api_key = os.environ.get("APP_ANTHROPIC_API_KEY", "")
+    if not api_key:
+        logger.warning("[bot_tasks] APP_ANTHROPIC_API_KEY not set, skipping formatting")
+        return raw_text
+
+    text_to_format = raw_text[:12000]
+
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 4096,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": FORMATTING_PROMPT + "\n\n---\n\nТранскрипция:\n\n" + text_to_format,
+                        }
+                    ],
+                },
+            )
+            if resp.status_code != 200:
+                logger.error("[bot_tasks] Claude formatting error %d: %s", resp.status_code, resp.text[:300])
+                return raw_text
+            data = resp.json()
+            formatted = ""
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    formatted += block["text"]
+            return formatted if formatted.strip() else raw_text
+    except Exception as e:
+        logger.error("[bot_tasks] Claude formatting exception: %s", e)
+        return raw_text
+
 
 class TaskCreate(BaseModel):
     url: str
@@ -63,6 +123,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     cookies_file = None
     try:
         tasks_store[task_id]["status"] = "processing"
+        tasks_store[task_id]["stage"] = "downloading"
         logger.info("[bot_tasks] %s: starting download for %s", task_id, url[:80])
 
         import yt_dlp
@@ -127,6 +188,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             file_size,
         )
 
+        tasks_store[task_id]["stage"] = "transcribing"
+
         text = await asyncio.to_thread(
             transcribe_with_groq_sync, audio_path, language
         )
@@ -134,8 +197,16 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             "[bot_tasks] %s: transcription done (%d chars)", task_id, len(text)
         )
 
+        # Format transcription with Claude AI
+        tasks_store[task_id]["stage"] = "formatting"
+        logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
+        formatted_text = await asyncio.to_thread(format_with_claude_sync, text)
+        logger.info(
+            "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
+        )
+
         tasks_store[task_id]["status"] = "done"
-        tasks_store[task_id]["transcription"] = text
+        tasks_store[task_id]["transcription"] = formatted_text
 
     except asyncio.TimeoutError:
         logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
