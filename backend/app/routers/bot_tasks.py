@@ -10,6 +10,7 @@ import tempfile
 import logging
 import shutil
 import httpx
+import requests
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks
@@ -119,6 +120,43 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
             return resp.text
 
 
+def download_via_cobalt(url: str, task_id: str) -> None:
+    """Level 0: Download audio via cobalt.tools API -- works for YouTube from any IP."""
+    api_url = "https://api.cobalt.tools"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "url": url,
+        "audioFormat": "mp3",
+        "isAudioOnly": True,
+        "filenameStyle": "basic",
+    }
+
+    resp = requests.post(api_url, json=payload, headers=headers, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
+
+    if data.get("status") == "error":
+        raise Exception(f"Cobalt error: {data.get('error', {}).get('code', 'unknown')}")
+
+    download_url = data.get("url")
+    if not download_url:
+        raise Exception("Cobalt: no download URL returned")
+
+    audio_resp = requests.get(download_url, timeout=120, stream=True)
+    audio_resp.raise_for_status()
+
+    output_path = "/tmp/" + task_id + ".mp3"
+    with open(output_path, "wb") as f:
+        for chunk in audio_resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+
+    print(f"[bot_tasks] {task_id}: Downloaded via cobalt.tools API")
+    logger.info("[bot_tasks] %s: Downloaded via cobalt.tools API", task_id)
+
+
 def _get_cookie_file() -> Optional[str]:
     """Decode YOUTUBE_COOKIES_B64 env var to a temp Netscape cookie file."""
     b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
@@ -224,29 +262,43 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         cookies_file = _get_cookie_file()
         logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
-        # Level 1: yt-dlp with ios/web_creator
-        try:
-            await asyncio.wait_for(
-                asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
-                timeout=DOWNLOAD_TIMEOUT,
-            )
-        except Exception as e1:
-            logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
-            print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
-            # Level 2: pytubefix
+        is_youtube = "youtube.com" in url or "youtu.be" in url
+
+        # Level 0: Cobalt API (YouTube only)
+        if is_youtube:
             try:
                 await asyncio.wait_for(
-                    asyncio.to_thread(_download_with_pytubefix, url, task_id),
+                    asyncio.to_thread(download_via_cobalt, url, task_id),
                     timeout=DOWNLOAD_TIMEOUT,
                 )
-            except Exception as e2:
-                logger.warning("[bot_tasks] %s: pytubefix failed: %s", task_id, e2)
-                print(f"[bot_tasks] {task_id}: pytubefix failed: {e2}")
-                # Level 3: yt-dlp with oauth2
+            except Exception as e0:
+                logger.warning("[bot_tasks] %s: cobalt failed: %s", task_id, e0)
+                print(f"[bot_tasks] {task_id}: cobalt failed: {e0}")
+
+        if not os.path.exists("/tmp/" + task_id + ".mp3"):
+            # Level 1: yt-dlp with ios/web_creator
+            try:
                 await asyncio.wait_for(
-                    asyncio.to_thread(_download_with_ytdlp_oauth, url, task_id),
+                    asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
                     timeout=DOWNLOAD_TIMEOUT,
                 )
+            except Exception as e1:
+                logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
+                # Level 2: pytubefix
+                try:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(_download_with_pytubefix, url, task_id),
+                        timeout=DOWNLOAD_TIMEOUT,
+                    )
+                except Exception as e2:
+                    logger.warning("[bot_tasks] %s: pytubefix failed: %s", task_id, e2)
+                    print(f"[bot_tasks] {task_id}: pytubefix failed: {e2}")
+                    # Level 3: yt-dlp with oauth2
+                    await asyncio.wait_for(
+                        asyncio.to_thread(_download_with_ytdlp_oauth, url, task_id),
+                        timeout=DOWNLOAD_TIMEOUT,
+                    )
 
         if not os.path.exists(audio_path):
             for ext in [".mp3", ".m4a", ".webm", ".opus"]:
