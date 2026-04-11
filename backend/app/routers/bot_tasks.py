@@ -122,6 +122,7 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
 
 def download_via_cobalt(url: str, task_id: str) -> None:
     """Level 0: Download audio via cobalt.tools API -- works for YouTube from any IP."""
+    print(f"=== DOWNLOAD FUNCTION cobalt: {url} ===")
     output_path = "/tmp/" + task_id + ".mp3"
 
     # Try multiple cobalt instances in order
@@ -201,6 +202,7 @@ def _get_cookie_file() -> Optional[str]:
 
 def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
     """Level 1: yt-dlp with ios/web_creator player_client."""
+    print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
     import yt_dlp
     print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
     logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
@@ -243,6 +245,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
 def _download_with_pytubefix(url: str, task_id: str) -> None:
     """Level 2: pytubefix fallback with PO token."""
+    print(f"=== DOWNLOAD FUNCTION pytubefix: {url} ===")
     from pytubefix import YouTube as PyTube
     yt = PyTube(url, use_po_token=True)
     stream = yt.streams.get_audio_only()
@@ -255,6 +258,7 @@ def _download_with_pytubefix(url: str, task_id: str) -> None:
 
 def _download_with_ytdlp_oauth(url: str, task_id: str) -> None:
     """Level 3: yt-dlp with oauth2 plugin."""
+    print(f"=== DOWNLOAD FUNCTION yt-dlp-oauth2: {url} ===")
     import yt_dlp
 
     ydl_opts = {
@@ -277,11 +281,14 @@ def _download_with_ytdlp_oauth(url: str, task_id: str) -> None:
 
 
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
+    print("=== RUN_TRANSCRIPTION CALLED ===")
+    print(f"=== task_id={task_id} url={url} ===")
     audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
     try:
         tasks_store[task_id]["status"] = "processing"
         tasks_store[task_id]["stage"] = "downloading"
+        tasks_store[task_id]["debug_log"] = "run_transcription started"
         logger.info("[bot_tasks] %s: starting download for %s", task_id, url[:80])
 
         cookies_file = _get_cookie_file()
@@ -295,17 +302,21 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Level 0: Cobalt API (YouTube only)
         if is_youtube:
             print("[Download] Trying Level 0: cobalt.tools")
+            tasks_store[task_id]["debug_log"] = "cobalt: trying api.cobalt.tools..."
             try:
                 await asyncio.wait_for(
                     asyncio.to_thread(download_via_cobalt, url, task_id),
                     timeout=DOWNLOAD_TIMEOUT,
                 )
                 print("[Download] Cobalt SUCCESS")
+                tasks_store[task_id]["debug_log"] = "cobalt: SUCCESS"
             except Exception as e0:
                 logger.warning("[bot_tasks] %s: cobalt failed: %s", task_id, e0)
                 print(f"[Download] Cobalt FAILED: {e0}")
+                tasks_store[task_id]["debug_log"] = f"cobalt FAILED: {str(e0)[:200]}"
         else:
             print("[Download] Skipping cobalt (not YouTube)")
+            tasks_store[task_id]["debug_log"] = "cobalt skipped (not YouTube)"
 
         if not os.path.exists("/tmp/" + task_id + ".mp3"):
             # Level 1: yt-dlp with ios/web_creator
