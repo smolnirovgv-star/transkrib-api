@@ -287,18 +287,25 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         cookies_file = _get_cookie_file()
         logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
+        print(f"[Download] URL: {url}")
         is_youtube = "youtube.com" in url or "youtu.be" in url
+        print(f"[Download] is_youtube check: 'youtube.com' in url = {'youtube.com' in url}, 'youtu.be' in url = {'youtu.be' in url}")
+        print(f"[Download] is_youtube = {is_youtube}")
 
         # Level 0: Cobalt API (YouTube only)
         if is_youtube:
+            print("[Download] Trying Level 0: cobalt.tools")
             try:
                 await asyncio.wait_for(
                     asyncio.to_thread(download_via_cobalt, url, task_id),
                     timeout=DOWNLOAD_TIMEOUT,
                 )
+                print("[Download] Cobalt SUCCESS")
             except Exception as e0:
                 logger.warning("[bot_tasks] %s: cobalt failed: %s", task_id, e0)
-                print(f"[bot_tasks] {task_id}: cobalt failed: {e0}")
+                print(f"[Download] Cobalt FAILED: {e0}")
+        else:
+            print("[Download] Skipping cobalt (not YouTube)")
 
         if not os.path.exists("/tmp/" + task_id + ".mp3"):
             # Level 1: yt-dlp with ios/web_creator
