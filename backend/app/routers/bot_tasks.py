@@ -8,6 +8,7 @@ import os
 import base64
 import tempfile
 import logging
+import shutil
 import httpx
 from typing import Optional
 
@@ -118,6 +119,100 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
             return resp.text
 
 
+def _get_cookie_file() -> Optional[str]:
+    """Decode YOUTUBE_COOKIES_B64 env var to a temp Netscape cookie file."""
+    b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
+    if not b64:
+        return None
+    try:
+        cookie_bytes = base64.b64decode(b64)
+        fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
+        with os.fdopen(fd, "wb") as f:
+            f.write(cookie_bytes)
+        logger.info(f"[bot_tasks] cookies file written: {path} ({len(cookie_bytes)} bytes)")
+        return path
+    except Exception as e:
+        logger.warning(f"[bot_tasks] failed to decode YOUTUBE_COOKIES_B64: {e}")
+        return None
+
+
+def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
+    """Level 1: yt-dlp with ios/web_creator player_client."""
+    import yt_dlp
+    print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
+    logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": "/tmp/" + task_id,
+        "postprocessors": [
+            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+        ],
+        "quiet": True,
+        "no_warnings": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "extractor_retries": 3,
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+                "Mobile/15E148 Safari/604.1"
+            ),
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["ios", "web_creator"],
+                "player_skip": ["webpage", "configs"],
+            }
+        },
+    }
+
+    if cookie_path:
+        ydl_opts["cookiefile"] = cookie_path
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    logger.info("[bot_tasks] %s: Downloaded via yt-dlp+ios", task_id)
+    print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp+ios")
+
+
+def _download_with_pytubefix(url: str, task_id: str) -> None:
+    """Level 2: pytubefix fallback with PO token."""
+    from pytubefix import YouTube as PyTube
+    yt = PyTube(url, use_po_token=True)
+    stream = yt.streams.get_audio_only()
+    out_path = stream.download(output_path="/tmp", filename=task_id + "_pytube")
+    target = "/tmp/" + task_id + ".mp3"
+    shutil.move(out_path, target)
+    logger.info("[bot_tasks] %s: Downloaded via pytubefix", task_id)
+    print(f"[bot_tasks] {task_id}: Downloaded via pytubefix")
+
+
+def _download_with_ytdlp_oauth(url: str, task_id: str) -> None:
+    """Level 3: yt-dlp with oauth2 plugin."""
+    import yt_dlp
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": "/tmp/" + task_id,
+        "postprocessors": [
+            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
+        ],
+        "quiet": True,
+        "no_warnings": True,
+        "username": "oauth2",
+        "password": "",
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    logger.info("[bot_tasks] %s: Downloaded via yt-dlp+oauth2", task_id)
+    print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp+oauth2")
+
+
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
@@ -126,59 +221,32 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["stage"] = "downloading"
         logger.info("[bot_tasks] %s: starting download for %s", task_id, url[:80])
 
-        import yt_dlp
+        cookies_file = _get_cookie_file()
+        logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
-        print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
-        logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
-
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "/tmp/" + task_id,
-            "postprocessors": [
-                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
-            ],
-            "quiet": True,
-            "no_warnings": True,
-            "socket_timeout": 30,
-            "retries": 3,
-            "extractor_retries": 3,
-            "http_headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-                    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
-                    "Mobile/15E148 Safari/604.1"
-                ),
-            },
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["ios", "web_creator"],
-                    "player_skip": ["webpage", "configs"],
-                }
-            },
-        }
-
-        cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64")
-        if cookies_b64:
+        # Level 1: yt-dlp with ios/web_creator
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
+                timeout=DOWNLOAD_TIMEOUT,
+            )
+        except Exception as e1:
+            logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+            print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
+            # Level 2: pytubefix
             try:
-                cookies_data = base64.b64decode(cookies_b64).decode("utf-8")
-                tmp = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".txt", delete=False
+                await asyncio.wait_for(
+                    asyncio.to_thread(_download_with_pytubefix, url, task_id),
+                    timeout=DOWNLOAD_TIMEOUT,
                 )
-                tmp.write(cookies_data)
-                tmp.close()
-                cookies_file = tmp.name
-                ydl_opts["cookiefile"] = cookies_file
-            except Exception as ce:
-                logger.warning("[bot_tasks] %s: cookies error: %s", task_id, ce)
-
-        def _download():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-        await asyncio.wait_for(
-            asyncio.to_thread(_download), timeout=DOWNLOAD_TIMEOUT
-        )
-        logger.info("[bot_tasks] %s: audio downloaded OK", task_id)
+            except Exception as e2:
+                logger.warning("[bot_tasks] %s: pytubefix failed: %s", task_id, e2)
+                print(f"[bot_tasks] {task_id}: pytubefix failed: {e2}")
+                # Level 3: yt-dlp with oauth2
+                await asyncio.wait_for(
+                    asyncio.to_thread(_download_with_ytdlp_oauth, url, task_id),
+                    timeout=DOWNLOAD_TIMEOUT,
+                )
 
         if not os.path.exists(audio_path):
             for ext in [".mp3", ".m4a", ".webm", ".opus"]:
@@ -205,7 +273,6 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             "[bot_tasks] %s: transcription done (%d chars)", task_id, len(text)
         )
 
-        # Format transcription with Claude AI
         tasks_store[task_id]["stage"] = "formatting"
         logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
         formatted_text = await asyncio.to_thread(format_with_claude_sync, text)
