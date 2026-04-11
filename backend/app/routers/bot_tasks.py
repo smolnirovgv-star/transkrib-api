@@ -201,7 +201,7 @@ def _get_cookie_file() -> Optional[str]:
 
 
 def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
-    """Level 1: yt-dlp with ios/web_creator player_client."""
+    """Level 1: yt-dlp with web/android player_client."""
     print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
     import yt_dlp
     print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
@@ -227,7 +227,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         },
         "extractor_args": {
             "youtube": {
-                "player_client": ["ios", "web_creator"],
+                "player_client": ["web", "android"],
                 "player_skip": ["webpage", "configs"],
             }
         },
