@@ -102,6 +102,7 @@ from app.routers.payments import router as payments_router
 from app.routers.payments_stripe import router as stripe_router
 from app.routers.payments_lemonsqueezy import router as lemon_router
 from app.routers.bot_tasks import router as bot_tasks_router
+from app.routers.bot_payments import router as bot_payments_router
 from app.workers.memory_progress import InMemoryProgressReporter
 from app.workers.standalone_tasks import (
     init_progress,
@@ -298,6 +299,7 @@ app.include_router(payments_router)
 app.include_router(stripe_router)
 app.include_router(lemon_router)
 app.include_router(bot_tasks_router)
+app.include_router(bot_payments_router)
 
 @app.get("/api/health")
 async def health():
