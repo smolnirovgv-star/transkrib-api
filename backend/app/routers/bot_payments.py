@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "TranskribSmartCutBot")
 
 PLAN_INFO = {
-    "starter": {"amount": "450.00", "days": 30,  "videos_limit": 30,   "name": "🚀 Starter"},
+    "starter": {"amount": "450.00", "days": 5,   "videos_limit": 9999, "name": "🚀 Starter"},
     "pro":     {"amount": "1700.00","days": 30,  "videos_limit": 9999, "name": "💼 Pro"},
     "annual":  {"amount": "8900.00","days": 365, "videos_limit": 9999, "name": "👑 Annual"},
 }
