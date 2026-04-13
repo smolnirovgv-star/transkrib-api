@@ -13,7 +13,7 @@ YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "TranskribSmartCutBot")
+BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "transkrib_smartcut_bot")
 
 PLAN_INFO = {
     "starter": {"amount": "450.00", "days": 10,   "videos_limit": 9999, "name": "⭐ Базовый"},
