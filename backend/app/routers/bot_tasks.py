@@ -201,42 +201,57 @@ def _get_cookie_file() -> Optional[str]:
 
 
 def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
-    """Level 1: yt-dlp default (no extractor_args -- let yt-dlp choose client)."""
+    """Level 1: yt-dlp with Chrome User-Agent and full error logging."""
     import glob
-    print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
     import yt_dlp
-    print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
-    logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
+    print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
+    logger.info("[bot_tasks] yt-dlp version: %s", yt_dlp.version.__version__)
 
     output_template = "/tmp/" + task_id + ".%(ext)s"
 
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": output_template,
-        "postprocessors": [
-            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
-        ],
         "quiet": False,
         "no_warnings": False,
-        "verbose": True,
-        "socket_timeout": 30,
+        "extract_flat": False,
         "retries": 3,
-        "extractor_retries": 3,
+        "socket_timeout": 30,
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
     }
 
     if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
 
-    logger.info("[bot_tasks] Starting yt-dlp download for: %s", url)
-    logger.info("[bot_tasks] Output template: %s", output_template)
+    logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
+    logger.info("[DOWNLOAD] Output template: %s", output_template)
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            logger.info("[DOWNLOAD] yt-dlp completed. Title: %s", info.get("title", "unknown"))
+            logger.info("[DOWNLOAD] Format: %s, Ext: %s", info.get("format", "?"), info.get("ext", "?"))
+    except Exception as e:
+        logger.error("[DOWNLOAD] yt-dlp FAILED: %s: %s", type(e).__name__, e)
+        raise
 
     files_found = glob.glob("/tmp/" + task_id + ".*")
-    logger.info("[bot_tasks] Files found after download: %s", files_found)
-    tmp_files = [f for f in os.listdir("/tmp") if task_id in f]
-    logger.info("[bot_tasks] Tmp files with task_id: %s", tmp_files)
+    logger.info("[DOWNLOAD] Files matching /tmp/%s.*: %s", task_id, files_found)
+    all_tmp = [f for f in os.listdir("/tmp") if task_id[:8] in f]
+    logger.info("[DOWNLOAD] All /tmp files with task_id prefix: %s", all_tmp)
 
     logger.info("[bot_tasks] %s: Downloaded via yt-dlp", task_id)
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")

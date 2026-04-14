@@ -10,6 +10,13 @@ def update_critical_dependencies():
     """Update critical dependencies at server startup.
     yt-dlp requires frequent updates as YouTube changes its API."""
     try:
+        # Ensure ffmpeg is available
+        subprocess.run(
+            ["apt-get", "install", "-y", "ffmpeg"],
+            capture_output=True, timeout=60
+        )
+        logger.info("ffmpeg install attempted")
+
         # Remove broken OAuth2 plugin (archived 17.01.2026)
         subprocess.run(
             [sys.executable, "-m", "pip", "uninstall", "-y", "yt-dlp-youtube-oauth2"],
