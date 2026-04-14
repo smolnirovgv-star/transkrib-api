@@ -301,8 +301,27 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
         raise ValueError(f"Cannot extract video ID from: {url}")
     logger.info("[TRANSCRIPT-API] Getting transcript for %s, lang=%s", video_id, lang)
     ytt_api = YouTubeTranscriptApi()
-    transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
-    full_text = " ".join([entry.text for entry in transcript])
+
+    cookies_content = os.getenv("YOUTUBE_COOKIES", "")
+    cookie_path = None
+    if cookies_content:
+        import tempfile as _tempfile
+        tmp = _tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir="/tmp")
+        tmp.write(cookies_content)
+        tmp.close()
+        cookie_path = tmp.name
+        logger.info("[TRANSCRIPT-API] Using cookies from YOUTUBE_COOKIES env")
+
+    try:
+        if cookie_path:
+            transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"], cookies=cookie_path)
+        else:
+            transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
+        full_text = " ".join([entry.text for entry in transcript])
+    finally:
+        if cookie_path and os.path.exists(cookie_path):
+            os.unlink(cookie_path)
+
     logger.info("[TRANSCRIPT-API] Got %d chars", len(full_text))
     return full_text
 
