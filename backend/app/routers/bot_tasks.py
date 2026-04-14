@@ -257,19 +257,6 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
 
-def _download_with_pytubefix(url: str, task_id: str) -> None:
-    """Level 2: pytubefix fallback with PO token."""
-    print(f"=== DOWNLOAD FUNCTION pytubefix: {url} ===")
-    from pytubefix import YouTube as PyTube
-    yt = PyTube(url, use_po_token=True)
-    stream = yt.streams.get_audio_only()
-    out_path = stream.download(output_path="/tmp", filename=task_id + "_pytube")
-    target = "/tmp/" + task_id + ".mp3"
-    shutil.move(out_path, target)
-    logger.info("[bot_tasks] %s: Downloaded via pytubefix", task_id)
-    print(f"[bot_tasks] {task_id}: Downloaded via pytubefix")
-
-
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     print("=== RUN_TRANSCRIPTION CALLED ===")
     print(f"=== task_id={task_id} url={url} ===")
@@ -316,17 +303,9 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     timeout=DOWNLOAD_TIMEOUT,
                 )
             except Exception as e1:
-                logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
                 print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
-                # Level 2: pytubefix
-                try:
-                    await asyncio.wait_for(
-                        asyncio.to_thread(_download_with_pytubefix, url, task_id),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
-                except Exception as e2:
-                    logger.warning("[bot_tasks] %s: pytubefix failed: %s", task_id, e2)
-                    print(f"[bot_tasks] {task_id}: pytubefix failed: {e2}")
+                raise
 
         if not os.path.exists(audio_path):
             for ext in [".mp3", ".m4a", ".webm", ".opus"]:
