@@ -201,46 +201,45 @@ def _get_cookie_file() -> Optional[str]:
 
 
 def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
-    """Level 1: yt-dlp with web/android player_client."""
+    """Level 1: yt-dlp default (no extractor_args -- let yt-dlp choose client)."""
+    import glob
     print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
     import yt_dlp
     print(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
     logger.info(f"[bot_tasks] yt-dlp version: {yt_dlp.version.__version__}")
 
+    output_template = "/tmp/" + task_id + ".%(ext)s"
+
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": "/tmp/" + task_id,
+        "outtmpl": output_template,
         "postprocessors": [
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
         ],
-        "quiet": True,
-        "no_warnings": True,
+        "quiet": False,
+        "no_warnings": False,
+        "verbose": True,
         "socket_timeout": 30,
         "retries": 3,
         "extractor_retries": 3,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
-                "Mobile/15E148 Safari/604.1"
-            ),
-        },
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web"],
-                "player_skip": ["webpage", "configs"],
-            }
-        },
     }
 
     if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
 
+    logger.info("[bot_tasks] Starting yt-dlp download for: %s", url)
+    logger.info("[bot_tasks] Output template: %s", output_template)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([url])
 
-    logger.info("[bot_tasks] %s: Downloaded via yt-dlp+ios", task_id)
-    print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp+ios")
+    files_found = glob.glob("/tmp/" + task_id + ".*")
+    logger.info("[bot_tasks] Files found after download: %s", files_found)
+    tmp_files = [f for f in os.listdir("/tmp") if task_id in f]
+    logger.info("[bot_tasks] Tmp files with task_id: %s", tmp_files)
+
+    logger.info("[bot_tasks] %s: Downloaded via yt-dlp", task_id)
+    print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
 
 def _download_with_pytubefix(url: str, task_id: str) -> None:
