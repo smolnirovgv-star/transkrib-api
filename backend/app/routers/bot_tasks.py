@@ -159,6 +159,9 @@ def _get_cookie_file() -> Optional[str]:
             with open(secret_path, "r") as f:
                 b64 = f.read().strip()
             logger.info("[COOKIES] Loaded YOUTUBE_COOKIES_B64 from secret file")
+            # Handle KEY=VALUE format if secret file was saved as .env style
+            if b64.startswith("YOUTUBE_COOKIES_B64="):
+                b64 = b64[len("YOUTUBE_COOKIES_B64="):]
         else:
             logger.warning("[COOKIES] YOUTUBE_COOKIES_B64 not set (no env var, no secret file)")
             return None
