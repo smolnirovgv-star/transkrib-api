@@ -19,6 +19,21 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
+from collections import deque
+_LOG_BUFFER = deque(maxlen=500)
+
+class _BufferHandler(logging.Handler):
+    def emit(self, record):
+        _LOG_BUFFER.append({
+            "t": self.formatter.formatTime(record, "%H:%M:%S") if self.formatter else "",
+            "lvl": record.levelname,
+            "msg": self.format(record),
+        })
+
+_buf_handler = _BufferHandler()
+_buf_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S"))
+logging.getLogger().addHandler(_buf_handler)
+
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
@@ -466,3 +481,15 @@ async def get_task_status(task_id: str):
     if task_id not in tasks_store:
         return {"status": "error", "error": "Task not found"}
     return tasks_store[task_id]
+
+@router.get("/api/debug/logs")
+async def get_debug_logs(n: int = 100):
+    """Return last N log lines from in-memory buffer."""
+    lines = list(_LOG_BUFFER)[-n:]
+    return {"count": len(lines), "logs": lines}
+
+
+@router.get("/api/debug/logs/clear")
+async def clear_debug_logs():
+    _LOG_BUFFER.clear()
+    return {"cleared": True}
