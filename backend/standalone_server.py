@@ -311,6 +311,32 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/debug/transcript-api")
+async def debug_transcript_api():
+    result = {}
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        result["installed"] = True
+        result["version"] = getattr(YouTubeTranscriptApi, "__version__", "unknown")
+        try:
+            transcript = YouTubeTranscriptApi.list_transcripts("Dr02MPRSSGU")
+            result["test"] = "list_transcripts OK"
+            for t in transcript:
+                result["available_lang"] = t.language_code
+                break
+        except Exception as e:
+            result["test_error"] = str(e)[:200]
+    except ImportError as e:
+        result["installed"] = False
+        result["error"] = str(e)
+    try:
+        from app.routers.bot_tasks import HAS_TRANSCRIPT_API
+        result["HAS_TRANSCRIPT_API"] = HAS_TRANSCRIPT_API
+    except Exception as e:
+        result["HAS_TRANSCRIPT_API"] = f"cannot import: {e}"
+    return result
+
+
 # License management endpoints
 from fastapi import HTTPException
 from pydantic import BaseModel
