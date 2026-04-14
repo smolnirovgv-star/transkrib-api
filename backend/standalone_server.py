@@ -319,11 +319,9 @@ async def debug_transcript_api():
         result["installed"] = True
         result["version"] = getattr(YouTubeTranscriptApi, "__version__", "unknown")
         try:
-            transcript = YouTubeTranscriptApi.list_transcripts("Dr02MPRSSGU")
-            result["test"] = "list_transcripts OK"
-            for t in transcript:
-                result["available_lang"] = t.language_code
-                break
+            ytt = YouTubeTranscriptApi()
+            entries = ytt.fetch("Dr02MPRSSGU")
+            result["test"] = f"fetch OK, {len(entries)} entries"
         except Exception as e:
             result["test_error"] = str(e)[:200]
     except ImportError as e:

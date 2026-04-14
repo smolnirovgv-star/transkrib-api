@@ -291,32 +291,19 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
     """Get subtitles directly from YouTube without downloading audio."""
     if not HAS_TRANSCRIPT_API:
         raise ImportError("youtube-transcript-api not installed")
-    import re as _re
     video_id = None
     for p in [r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})", r"(?:embed/)([a-zA-Z0-9_-]{11})"]:
-        m = _re.search(p, url)
+        m = re.search(p, url)
         if m:
             video_id = m.group(1)
             break
     if not video_id:
         raise ValueError(f"Cannot extract video ID from: {url}")
     logger.info("[TRANSCRIPT-API] Getting transcript for %s, lang=%s", video_id, lang)
-    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-    transcript = None
-    try:
-        transcript = transcript_list.find_transcript([lang])
-    except Exception:
-        try:
-            transcript = transcript_list.find_generated_transcript([lang, "en", "ru"])
-        except Exception:
-            for t in transcript_list:
-                transcript = t
-                break
-    if not transcript:
-        raise RuntimeError(f"No transcript found for {video_id}")
-    entries = transcript.fetch()
-    full_text = " ".join([e.text for e in entries])
-    logger.info("[TRANSCRIPT-API] Got %d segments, %d chars", len(entries), len(full_text))
+    ytt_api = YouTubeTranscriptApi()
+    transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
+    full_text = " ".join([entry.text for entry in transcript])
+    logger.info("[TRANSCRIPT-API] Got %d chars", len(full_text))
     return full_text
 
 
