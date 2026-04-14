@@ -148,11 +148,21 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
 
 
 def _get_cookie_file() -> Optional[str]:
-    """Decode YOUTUBE_COOKIES_B64 env var to a temp Netscape cookie file."""
-    b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
+    """Decode YOUTUBE_COOKIES_B64 to a temp Netscape cookie file.
+    Reads from env var first, then from Render Secret File at /etc/secrets/YOUTUBE_COOKIES_B64.
+    """
+    b64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
+
     if not b64:
-        logger.warning("[COOKIES] YOUTUBE_COOKIES_B64 not set")
-        return None
+        secret_path = "/etc/secrets/YOUTUBE_COOKIES_B64"
+        if os.path.exists(secret_path):
+            with open(secret_path, "r") as f:
+                b64 = f.read().strip()
+            logger.info("[COOKIES] Loaded YOUTUBE_COOKIES_B64 from secret file")
+        else:
+            logger.warning("[COOKIES] YOUTUBE_COOKIES_B64 not set (no env var, no secret file)")
+            return None
+
     try:
         cookie_bytes = base64.b64decode(b64)
         fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
@@ -162,10 +172,12 @@ def _get_cookie_file() -> Optional[str]:
         has_netscape = b"Netscape HTTP Cookie File" in cookie_bytes[:100]
         has_tabs = b"\t" in cookie_bytes
         line_count = cookie_bytes.count(b"\n")
-        logger.info("[COOKIES] Written %d bytes, %d lines, has_netscape=%s, has_tabs=%s, first=%r",
-            len(cookie_bytes), line_count, has_netscape, has_tabs, first_line[:60])
+        logger.info(
+            "[COOKIES] Written %d bytes, %d lines, has_netscape=%s, has_tabs=%s, first=%r",
+            len(cookie_bytes), line_count, has_netscape, has_tabs, first_line[:60],
+        )
         if not has_tabs:
-            logger.error("[COOKIES] WARNING: no TAB chars in cookie file — format likely broken!")
+            logger.error("[COOKIES] WARNING: no TAB chars — format likely broken!")
         if not has_netscape:
             logger.error("[COOKIES] WARNING: missing Netscape HTTP Cookie File header!")
         return path
