@@ -11,7 +11,16 @@ import logging
 import shutil
 import httpx
 import requests
+import re
 from typing import Optional
+
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
+    _YT_TRANSCRIPT_AVAILABLE = True
+except ImportError:
+    _YT_TRANSCRIPT_AVAILABLE = False
+
 
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
@@ -277,84 +286,131 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
 
+def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
+    """Get subtitles directly from YouTube without downloading audio."""
+    if not _YT_TRANSCRIPT_AVAILABLE:
+        raise ImportError("youtube-transcript-api not installed")
+    import re as _re
+    video_id = None
+    for p in [r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})", r"(?:embed/)([a-zA-Z0-9_-]{11})"]:
+        m = _re.search(p, url)
+        if m:
+            video_id = m.group(1)
+            break
+    if not video_id:
+        raise ValueError(f"Cannot extract video ID from: {url}")
+    logger.info("[TRANSCRIPT-API] Getting transcript for %s, lang=%s", video_id, lang)
+    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+    transcript = None
+    try:
+        transcript = transcript_list.find_transcript([lang])
+    except Exception:
+        try:
+            transcript = transcript_list.find_generated_transcript([lang, "en", "ru"])
+        except Exception:
+            for t in transcript_list:
+                transcript = t
+                break
+    if not transcript:
+        raise RuntimeError(f"No transcript found for {video_id}")
+    entries = transcript.fetch()
+    full_text = " ".join([e.text for e in entries])
+    logger.info("[TRANSCRIPT-API] Got %d segments, %d chars", len(entries), len(full_text))
+    return full_text
+
+
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     print("=== RUN_TRANSCRIPTION CALLED ===")
     print(f"=== task_id={task_id} url={url} ===")
     audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
+    raw_text = None
     try:
         tasks_store[task_id]["status"] = "processing"
         tasks_store[task_id]["stage"] = "downloading"
         tasks_store[task_id]["debug_log"] = "run_transcription started"
-        logger.info("[bot_tasks] %s: starting download for %s", task_id, url[:80])
+        logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
 
-        cookies_file = _get_cookie_file()
-        logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
-
-        print(f"[Download] URL: {url}")
         is_youtube = "youtube.com" in url or "youtu.be" in url
-        print(f"[Download] is_youtube check: 'youtube.com' in url = {'youtube.com' in url}, 'youtu.be' in url = {'youtu.be' in url}")
-        print(f"[Download] is_youtube = {is_youtube}")
+        print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
-        # Level 0: Cobalt API (YouTube only)
+        # Step 1: Try YouTube Transcript API directly (fast, no audio download)
         if is_youtube:
-            print("[Download] Trying Level 0: cobalt.tools")
-            tasks_store[task_id]["debug_log"] = "cobalt: trying api.cobalt.tools..."
             try:
-                await asyncio.wait_for(
-                    asyncio.to_thread(download_via_cobalt, url, task_id),
-                    timeout=DOWNLOAD_TIMEOUT,
+                raw_text = await asyncio.to_thread(
+                    _get_youtube_transcript, url, language or "ru"
                 )
-                print("[Download] Cobalt SUCCESS")
-                tasks_store[task_id]["debug_log"] = "cobalt: SUCCESS"
-            except Exception as e0:
-                logger.warning("[bot_tasks] %s: cobalt failed: %s", task_id, e0)
-                print(f"[Download] Cobalt FAILED: {e0}")
-                tasks_store[task_id]["debug_log"] = f"cobalt FAILED: {str(e0)[:200]}"
-        else:
-            print("[Download] Skipping cobalt (not YouTube)")
-            tasks_store[task_id]["debug_log"] = "cobalt skipped (not YouTube)"
+                logger.info("[TRANSCRIPT-API] %s: success, %d chars", task_id, len(raw_text))
+                tasks_store[task_id]["debug_log"] = "transcript-api: SUCCESS"
+            except Exception as et:
+                logger.info("[TRANSCRIPT-API] %s: failed: %s — falling back to audio", task_id, et)
+                tasks_store[task_id]["debug_log"] = f"transcript-api FAILED: {str(et)[:200]}"
+                raw_text = None
 
-        if not os.path.exists("/tmp/" + task_id + ".mp3"):
-            # Level 1: yt-dlp with ios/web_creator
-            try:
-                await asyncio.wait_for(
-                    asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
-                    timeout=DOWNLOAD_TIMEOUT,
-                )
-            except Exception as e1:
-                logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
-                print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
-                raise
+        # Step 2: If no transcript — download audio + Groq (fallback)
+        if not raw_text:
+            cookies_file = _get_cookie_file()
+            logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
-        if not os.path.exists(audio_path):
-            for ext in [".mp3", ".m4a", ".webm", ".opus"]:
-                alt = "/tmp/" + task_id + ext
-                if os.path.exists(alt):
-                    audio_path = alt
-                    break
+            # Level 0: Cobalt API (YouTube only)
+            if is_youtube:
+                print("[Download] Trying Level 0: cobalt.tools")
+                tasks_store[task_id]["debug_log"] = "cobalt: trying api.cobalt.tools..."
+                try:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(download_via_cobalt, url, task_id),
+                        timeout=DOWNLOAD_TIMEOUT,
+                    )
+                    print("[Download] Cobalt SUCCESS")
+                    tasks_store[task_id]["debug_log"] = "cobalt: SUCCESS"
+                except Exception as e0:
+                    logger.warning("[bot_tasks] %s: cobalt failed: %s", task_id, e0)
+                    print(f"[Download] Cobalt FAILED: {e0}")
+                    tasks_store[task_id]["debug_log"] = f"cobalt FAILED: {str(e0)[:200]}"
             else:
-                raise FileNotFoundError("Audio not found at /tmp/" + task_id + ".*")
+                print("[Download] Skipping cobalt (not YouTube)")
+                tasks_store[task_id]["debug_log"] = "cobalt skipped (not YouTube)"
 
-        file_size = os.path.getsize(audio_path)
-        logger.info(
-            "[bot_tasks] %s: audio %d bytes, sending to Groq Whisper",
-            task_id,
-            file_size,
-        )
+            if not os.path.exists("/tmp/" + task_id + ".mp3"):
+                # Level 1: yt-dlp
+                try:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
+                        timeout=DOWNLOAD_TIMEOUT,
+                    )
+                except Exception as e1:
+                    logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                    print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
+                    raise
 
-        tasks_store[task_id]["stage"] = "transcribing"
+            if not os.path.exists(audio_path):
+                for ext in [".mp3", ".m4a", ".webm", ".opus"]:
+                    alt = "/tmp/" + task_id + ext
+                    if os.path.exists(alt):
+                        audio_path = alt
+                        break
+                else:
+                    raise FileNotFoundError("Audio not found at /tmp/" + task_id + ".*")
 
-        text = await asyncio.to_thread(
-            transcribe_with_groq_sync, audio_path, language
-        )
-        logger.info(
-            "[bot_tasks] %s: transcription done (%d chars)", task_id, len(text)
-        )
+            file_size = os.path.getsize(audio_path)
+            logger.info(
+                "[bot_tasks] %s: audio %d bytes, sending to Groq Whisper",
+                task_id,
+                file_size,
+            )
 
+            tasks_store[task_id]["stage"] = "transcribing"
+            raw_text = await asyncio.to_thread(
+                transcribe_with_groq_sync, audio_path, language
+            )
+            logger.info(
+                "[bot_tasks] %s: groq transcription done (%d chars)", task_id, len(raw_text)
+            )
+
+        # Step 3: Format with Claude
         tasks_store[task_id]["stage"] = "formatting"
         logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
-        formatted_text = await asyncio.to_thread(format_with_claude_sync, text)
+        formatted_text = await asyncio.to_thread(format_with_claude_sync, raw_text)
         logger.info(
             "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
         )
