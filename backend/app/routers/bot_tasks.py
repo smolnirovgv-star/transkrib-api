@@ -233,8 +233,25 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         }],
     }
 
+    # Use cookie_path from caller, or fall back to YOUTUBE_COOKIES env var
+    tmp_cookiefile = None
     if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
+        logger.info("[DOWNLOAD] Using cookies from caller (YOUTUBE_COOKIES_B64)")
+    else:
+        cookies_content = os.getenv("YOUTUBE_COOKIES", "")
+        if cookies_content:
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".txt", delete=False, dir="/tmp"
+            )
+            tmp.write(cookies_content)
+            tmp.close()
+            tmp_cookiefile = tmp.name
+            ydl_opts["cookiefile"] = tmp_cookiefile
+            logger.info("[DOWNLOAD] Using YouTube cookies from YOUTUBE_COOKIES env")
+        else:
+            logger.info("[DOWNLOAD] No cookies available (set YOUTUBE_COOKIES or YOUTUBE_COOKIES_B64)")
 
     logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
     logger.info("[DOWNLOAD] Output template: %s", output_template)
@@ -247,6 +264,9 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     except Exception as e:
         logger.error("[DOWNLOAD] yt-dlp FAILED: %s: %s", type(e).__name__, e)
         raise
+    finally:
+        if tmp_cookiefile and os.path.exists(tmp_cookiefile):
+            os.unlink(tmp_cookiefile)
 
     files_found = glob.glob("/tmp/" + task_id + ".*")
     logger.info("[DOWNLOAD] Files matching /tmp/%s.*: %s", task_id, files_found)
