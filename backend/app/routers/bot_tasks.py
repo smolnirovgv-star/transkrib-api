@@ -14,24 +14,19 @@ import requests
 import re
 from typing import Optional
 
+from fastapi import APIRouter, BackgroundTasks
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
     HAS_TRANSCRIPT_API = True
-except ImportError:
+    logger.info("[STARTUP] youtube-transcript-api imported OK")
+except ImportError as _e:
     HAS_TRANSCRIPT_API = False
-
-
-from fastapi import APIRouter, BackgroundTasks
-from pydantic import BaseModel
-
-logger = logging.getLogger("video_processor.bot_tasks")
-
-# Log youtube-transcript-api availability at startup
-if HAS_TRANSCRIPT_API:
-    logger.info("[STARTUP] youtube-transcript-api imported OK — direct subtitles enabled")
-else:
-    logger.error("[STARTUP] youtube-transcript-api NOT AVAILABLE — will use audio fallback only")
+    logger.error("[STARTUP] youtube-transcript-api NOT AVAILABLE: %s", _e)
 
 router = APIRouter()
 
