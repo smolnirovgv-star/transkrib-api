@@ -17,15 +17,21 @@ from typing import Optional
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
-    _YT_TRANSCRIPT_AVAILABLE = True
+    HAS_TRANSCRIPT_API = True
 except ImportError:
-    _YT_TRANSCRIPT_AVAILABLE = False
+    HAS_TRANSCRIPT_API = False
 
 
 from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 logger = logging.getLogger("video_processor.bot_tasks")
+
+# Log youtube-transcript-api availability at startup
+if HAS_TRANSCRIPT_API:
+    logger.info("[STARTUP] youtube-transcript-api imported OK — direct subtitles enabled")
+else:
+    logger.error("[STARTUP] youtube-transcript-api NOT AVAILABLE — will use audio fallback only")
 
 router = APIRouter()
 
@@ -288,7 +294,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
 def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
     """Get subtitles directly from YouTube without downloading audio."""
-    if not _YT_TRANSCRIPT_AVAILABLE:
+    if not HAS_TRANSCRIPT_API:
         raise ImportError("youtube-transcript-api not installed")
     import re as _re
     video_id = None
@@ -335,17 +341,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
         # Step 1: Try YouTube Transcript API directly (fast, no audio download)
-        if is_youtube:
+        if is_youtube and HAS_TRANSCRIPT_API:
             try:
+                logger.info("[TRANSCRIPT-API] %s: trying direct transcript for: %s", task_id, url)
                 raw_text = await asyncio.to_thread(
                     _get_youtube_transcript, url, language or "ru"
                 )
-                logger.info("[TRANSCRIPT-API] %s: success, %d chars", task_id, len(raw_text))
+                logger.info("[TRANSCRIPT-API] %s: SUCCESS! Got %d chars", task_id, len(raw_text))
                 tasks_store[task_id]["debug_log"] = "transcript-api: SUCCESS"
             except Exception as et:
-                logger.info("[TRANSCRIPT-API] %s: failed: %s — falling back to audio", task_id, et)
+                logger.warning("[TRANSCRIPT-API] %s: failed: %s — falling back to audio download", task_id, et)
                 tasks_store[task_id]["debug_log"] = f"transcript-api FAILED: {str(et)[:200]}"
                 raw_text = None
+        elif is_youtube and not HAS_TRANSCRIPT_API:
+            logger.warning("[TRANSCRIPT-API] %s: library not available, skipping to audio download", task_id)
 
         # Step 2: If no transcript — download audio + Groq (fallback)
         if not raw_text:
