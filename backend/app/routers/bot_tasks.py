@@ -197,16 +197,26 @@ def _get_cookie_file() -> Optional[str]:
     """Decode YOUTUBE_COOKIES_B64 env var to a temp Netscape cookie file."""
     b64 = os.getenv("YOUTUBE_COOKIES_B64", "")
     if not b64:
+        logger.warning("[COOKIES] YOUTUBE_COOKIES_B64 not set")
         return None
     try:
         cookie_bytes = base64.b64decode(b64)
         fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
         with os.fdopen(fd, "wb") as f:
             f.write(cookie_bytes)
-        logger.info(f"[bot_tasks] cookies file written: {path} ({len(cookie_bytes)} bytes)")
+        first_line = cookie_bytes[:50].decode("utf-8", errors="replace").split("\n")[0]
+        has_netscape = b"Netscape HTTP Cookie File" in cookie_bytes[:100]
+        has_tabs = b"\t" in cookie_bytes
+        line_count = cookie_bytes.count(b"\n")
+        logger.info("[COOKIES] Written %d bytes, %d lines, has_netscape=%s, has_tabs=%s, first=%r",
+            len(cookie_bytes), line_count, has_netscape, has_tabs, first_line[:60])
+        if not has_tabs:
+            logger.error("[COOKIES] WARNING: no TAB chars in cookie file — format likely broken!")
+        if not has_netscape:
+            logger.error("[COOKIES] WARNING: missing Netscape HTTP Cookie File header!")
         return path
     except Exception as e:
-        logger.warning(f"[bot_tasks] failed to decode YOUTUBE_COOKIES_B64: {e}")
+        logger.warning("[COOKIES] failed to decode YOUTUBE_COOKIES_B64: %s", e)
         return None
 
 
@@ -243,25 +253,11 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         }],
     }
 
-    # Use cookie_path from caller, or fall back to YOUTUBE_COOKIES env var
-    tmp_cookiefile = None
     if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
-        logger.info("[DOWNLOAD] Using cookies from caller (YOUTUBE_COOKIES_B64)")
+        logger.info("[DOWNLOAD] Using cookies from YOUTUBE_COOKIES_B64 (base64)")
     else:
-        cookies_content = os.getenv("YOUTUBE_COOKIES", "")
-        if cookies_content:
-            import tempfile
-            tmp = tempfile.NamedTemporaryFile(
-                mode="w", suffix=".txt", delete=False, dir="/tmp"
-            )
-            tmp.write(cookies_content)
-            tmp.close()
-            tmp_cookiefile = tmp.name
-            ydl_opts["cookiefile"] = tmp_cookiefile
-            logger.info("[DOWNLOAD] Using YouTube cookies from YOUTUBE_COOKIES env")
-        else:
-            logger.info("[DOWNLOAD] No cookies available (set YOUTUBE_COOKIES or YOUTUBE_COOKIES_B64)")
+        logger.info("[DOWNLOAD] No cookies (YOUTUBE_COOKIES_B64 not set)")
 
     logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
     logger.info("[DOWNLOAD] Output template: %s", output_template)
@@ -275,8 +271,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         logger.error("[DOWNLOAD] yt-dlp FAILED: %s: %s", type(e).__name__, e)
         raise
     finally:
-        if tmp_cookiefile and os.path.exists(tmp_cookiefile):
-            os.unlink(tmp_cookiefile)
+        pass
 
     files_found = glob.glob("/tmp/" + task_id + ".*")
     logger.info("[DOWNLOAD] Files matching /tmp/%s.*: %s", task_id, files_found)
@@ -300,23 +295,28 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
     if not video_id:
         raise ValueError(f"Cannot extract video ID from: {url}")
     logger.info("[TRANSCRIPT-API] Getting transcript for %s, lang=%s", video_id, lang)
-    ytt_api = YouTubeTranscriptApi()
 
-    cookies_content = os.getenv("YOUTUBE_COOKIES", "")
-    cookie_path = None
-    if cookies_content:
-        import tempfile as _tempfile
-        tmp = _tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, dir="/tmp")
-        tmp.write(cookies_content)
-        tmp.close()
-        cookie_path = tmp.name
-        logger.info("[TRANSCRIPT-API] Using cookies from YOUTUBE_COOKIES env")
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+    })
 
+    cookie_path = _get_cookie_file()
     try:
         if cookie_path:
-            transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"], cookies=cookie_path)
-        else:
-            transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
+            import http.cookiejar as _cj
+            cj = _cj.MozillaCookieJar(cookie_path)
+            cj.load(ignore_discard=True, ignore_expires=True)
+            for cookie in cj:
+                session.cookies.set(cookie.name, cookie.value, domain=cookie.domain)
+            logger.info("[TRANSCRIPT-API] Loaded %d cookies into session", len(session.cookies))
+        ytt_api = YouTubeTranscriptApi(http_client=session)
+        transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
         full_text = " ".join([entry.text for entry in transcript])
     finally:
         if cookie_path and os.path.exists(cookie_path):
