@@ -34,5 +34,15 @@ def update_critical_dependencies():
         else:
             logger.warning("yt-dlp update failed: %s", result.stderr[:300])
 
+        # Ensure youtube-transcript-api is installed
+        result2 = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "youtube-transcript-api"],
+            capture_output=True, text=True, timeout=60
+        )
+        if result2.returncode == 0:
+            logger.info("youtube-transcript-api OK: %s", result2.stdout.strip()[-100:])
+        else:
+            logger.error("youtube-transcript-api install FAILED: %s", result2.stderr[:300])
+
     except Exception as e:
         logger.warning("Failed to update dependencies: %s", e)
