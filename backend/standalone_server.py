@@ -13,6 +13,11 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 # PyInstaller frozen detection
+# Update yt-dlp on Render (non-frozen) at startup
+if not getattr(sys, "frozen", False):
+    from app.startup import update_critical_dependencies
+    update_critical_dependencies()
+
 if getattr(sys, "frozen", False):
     # Когда упаковано PyInstaller — sys._MEIPASS содержит temp extraction dir
     BASE_DIR = Path(sys._MEIPASS)

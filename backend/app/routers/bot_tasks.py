@@ -227,7 +227,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         },
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "android"],
+                "player_client": ["web"],
                 "player_skip": ["webpage", "configs"],
             }
         },
@@ -254,30 +254,6 @@ def _download_with_pytubefix(url: str, task_id: str) -> None:
     shutil.move(out_path, target)
     logger.info("[bot_tasks] %s: Downloaded via pytubefix", task_id)
     print(f"[bot_tasks] {task_id}: Downloaded via pytubefix")
-
-
-def _download_with_ytdlp_oauth(url: str, task_id: str) -> None:
-    """Level 3: yt-dlp with oauth2 plugin."""
-    print(f"=== DOWNLOAD FUNCTION yt-dlp-oauth2: {url} ===")
-    import yt_dlp
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": "/tmp/" + task_id,
-        "postprocessors": [
-            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"}
-        ],
-        "quiet": True,
-        "no_warnings": True,
-        "username": "oauth2",
-        "password": "",
-    }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-
-    logger.info("[bot_tasks] %s: Downloaded via yt-dlp+oauth2", task_id)
-    print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp+oauth2")
 
 
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
@@ -337,11 +313,6 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 except Exception as e2:
                     logger.warning("[bot_tasks] %s: pytubefix failed: %s", task_id, e2)
                     print(f"[bot_tasks] {task_id}: pytubefix failed: {e2}")
-                    # Level 3: yt-dlp with oauth2
-                    await asyncio.wait_for(
-                        asyncio.to_thread(_download_with_ytdlp_oauth, url, task_id),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
 
         if not os.path.exists(audio_path):
             for ext in [".mp3", ".m4a", ".webm", ".opus"]:
