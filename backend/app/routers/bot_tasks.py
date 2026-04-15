@@ -258,6 +258,24 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     all_tmp = [f for f in os.listdir("/tmp") if task_id[:8] in f]
     logger.info("[DOWNLOAD] All /tmp files with task_id prefix: %s", all_tmp)
 
+    # Check file size — Groq limit is 25MB
+    audio_path = "/tmp/" + task_id + ".mp3"
+    if os.path.exists(audio_path):
+        file_size = os.path.getsize(audio_path)
+        logger.info("[DOWNLOAD] File size: %.1f MB", file_size / 1024 / 1024)
+        if file_size > 24 * 1024 * 1024:
+            logger.warning("[DOWNLOAD] File too large (%.1f MB), trimming to 10 min", file_size / 1024 / 1024)
+            trimmed_path = audio_path.rsplit(".", 1)[0] + "_trimmed.mp3"
+            import subprocess
+            subprocess.run([
+                "ffmpeg", "-i", audio_path, "-t", "600",
+                "-acodec", "libmp3lame", "-q:a", "9",
+                trimmed_path, "-y"
+            ], check=True, capture_output=True)
+            os.remove(audio_path)
+            os.rename(trimmed_path, audio_path)
+            logger.info("[DOWNLOAD] Trimmed file size: %.1f MB", os.path.getsize(audio_path) / 1024 / 1024)
+
     logger.info("[bot_tasks] %s: Downloaded via yt-dlp", task_id)
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
