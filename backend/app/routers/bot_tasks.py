@@ -390,7 +390,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
         # Step 1a: Try Supadata API first (works from any IP, no proxy)
-        is_supadata_supported = is_youtube or "vkvideo.ru" in url or "vk.com/video" in url
+        is_supadata_supported = is_youtube or "vk.com/video" in url
         if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text:
             try:
                 logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
