@@ -118,7 +118,15 @@ class TaskCreate(BaseModel):
     language: Optional[str] = "auto"
 
 
-def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
+def _fmt_srt_time(t: float) -> str:
+    h = int(t // 3600)
+    m = int((t % 3600) // 60)
+    s = int(t % 60)
+    ms = int((t % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def transcribe_with_groq_sync(audio_path: str, language: str = "auto", output_format: str = "text") -> str:
     """Transcribe audio using Groq Whisper API (synchronous)."""
     import time
     groq_key = os.environ.get("GROQ_API_KEY", "")
@@ -131,7 +139,14 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
         try:
             with open(audio_path, "rb") as f:
                 files = {"file": (os.path.basename(audio_path), f, "audio/mpeg")}
-                data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
+                if output_format == "srt":
+                    data = {
+                        "model": "whisper-large-v3",
+                        "response_format": "verbose_json",
+                        "timestamp_granularities[]": "segment",
+                    }
+                else:
+                    data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
                 if language and language != "auto":
                     data["language"] = language
 
@@ -146,6 +161,16 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
                         raise RuntimeError(
                             "Groq API error " + str(resp.status_code) + ": " + resp.text[:300]
                         )
+                    if output_format == "srt":
+                        segments = resp.json().get("segments", [])
+                        srt_lines = []
+                        for i, seg in enumerate(segments, 1):
+                            srt_lines.append(str(i))
+                            srt_lines.append(f"{_fmt_srt_time(seg['start'])} --> {_fmt_srt_time(seg['end'])}")
+                            srt_lines.append(seg["text"].strip())
+                            srt_lines.append("")
+                        return "
+".join(srt_lines)
                     return resp.text
         except Exception as e:
             logger.warning("[GROQ] attempt %d/3 failed: %s", attempt + 1, str(e)[:200])
@@ -450,17 +475,39 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 raise
 
             tasks_store[task_id]["stage"] = "transcribing"
+            output_format = "srt" if fmt == "srt" else "text"
             if isinstance(download_result, list):
                 # Multiple chunks — transcribe each and combine
                 chunk_texts = []
                 for i, chunk_path in enumerate(download_result):
                     logger.info("[GROQ] Transcribing chunk %d/%d", i + 1, len(download_result))
                     chunk_text = await asyncio.to_thread(
-                        transcribe_with_groq_sync, chunk_path, language
+                        transcribe_with_groq_sync, chunk_path, language, output_format
                     )
                     chunk_texts.append(chunk_text)
                     os.remove(chunk_path)
-                raw_text = " ".join(chunk_texts)
+                if output_format == "srt":
+                    # Renumber SRT blocks sequentially across chunks
+                    combined_lines = []
+                    counter = 1
+                    for chunk_srt in chunk_texts:
+                        lines = chunk_srt.strip().splitlines()
+                        j = 0
+                        while j < len(lines):
+                            if lines[j].strip().isdigit():
+                                combined_lines.append(str(counter))
+                                counter += 1
+                                j += 1
+                                while j < len(lines) and lines[j].strip() != "":
+                                    combined_lines.append(lines[j])
+                                    j += 1
+                                combined_lines.append("")
+                            else:
+                                j += 1
+                    raw_text = "
+".join(combined_lines)
+                else:
+                    raw_text = " ".join(chunk_texts)
                 logger.info("[GROQ] All chunks transcribed, total: %d chars", len(raw_text))
             else:
                 # Single file
@@ -475,7 +522,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 file_size = os.path.getsize(audio_path)
                 logger.info("[bot_tasks] %s: audio %d bytes, sending to Groq Whisper", task_id, file_size)
                 raw_text = await asyncio.to_thread(
-                    transcribe_with_groq_sync, audio_path, language
+                    transcribe_with_groq_sync, audio_path, language, output_format
                 )
                 logger.info("[bot_tasks] %s: groq transcription done (%d chars)", task_id, len(raw_text))
 
