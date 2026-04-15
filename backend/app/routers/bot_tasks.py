@@ -169,8 +169,7 @@ def transcribe_with_groq_sync(audio_path: str, language: str = "auto", output_fo
                             srt_lines.append(f"{_fmt_srt_time(seg['start'])} --> {_fmt_srt_time(seg['end'])}")
                             srt_lines.append(seg["text"].strip())
                             srt_lines.append("")
-                        return "
-".join(srt_lines)
+                        return "\n".join(srt_lines)
                     return resp.text
         except Exception as e:
             logger.warning("[GROQ] attempt %d/3 failed: %s", attempt + 1, str(e)[:200])
@@ -504,8 +503,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                                 combined_lines.append("")
                             else:
                                 j += 1
-                    raw_text = "
-".join(combined_lines)
+                    raw_text = "\n".join(combined_lines)
                 else:
                     raw_text = " ".join(chunk_texts)
                 logger.info("[GROQ] All chunks transcribed, total: %d chars", len(raw_text))
