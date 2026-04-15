@@ -405,6 +405,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["stage"] = "downloading"
         tasks_store[task_id]["debug_log"] = "run_transcription started"
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
+        logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
+            task_id, fmt, "srt" if fmt == "srt" else "text")
 
         # Check video duration before processing
         try:
