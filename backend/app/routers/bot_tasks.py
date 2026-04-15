@@ -526,16 +526,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 )
                 logger.info("[bot_tasks] %s: groq transcription done (%d chars)", task_id, len(raw_text))
 
-        # Step 3: Format with Claude
-        tasks_store[task_id]["stage"] = "formatting"
-        logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
-        formatted_text = await asyncio.to_thread(format_with_claude_sync, raw_text)
-        logger.info(
-            "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
-        )
-
-        tasks_store[task_id]["status"] = "done"
-        tasks_store[task_id]["transcription"] = formatted_text
+        # Step 3: Format with Claude (skip for SRT - return raw timestamps)
+        if output_format == "srt":
+            logger.info("[bot_tasks] %s: SRT format - skipping Claude, returning raw SRT", task_id)
+            tasks_store[task_id]["status"] = "done"
+            tasks_store[task_id]["transcription"] = raw_text
+        else:
+            tasks_store[task_id]["stage"] = "formatting"
+            logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
+            formatted_text = await asyncio.to_thread(format_with_claude_sync, raw_text)
+            logger.info(
+                "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
+            )
+            tasks_store[task_id]["status"] = "done"
+            tasks_store[task_id]["transcription"] = formatted_text
 
     except asyncio.TimeoutError:
         logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
