@@ -47,7 +47,7 @@ router = APIRouter()
 
 tasks_store: dict = {}
 
-DOWNLOAD_TIMEOUT = 120
+DOWNLOAD_TIMEOUT = 300
 
 FORMATTING_PROMPT = """Ты — профессиональный редактор. Тебе дана сырая транскрипция видео/аудио для Telegram.
 
@@ -200,12 +200,13 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     output_template = "/tmp/" + task_id + ".%(ext)s"
 
     ydl_opts = {
-        "format": "bestaudio/best",
+        "format": "worstaudio/bestaudio/best",
         "outtmpl": output_template,
         "quiet": False,
         "no_warnings": False,
         "extract_flat": False,
         "retries": 3,
+        "throttledratelimit": 0,
         "socket_timeout": 30,
         "http_headers": {
             "User-Agent": (
