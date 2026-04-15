@@ -199,7 +199,7 @@ def _get_cookie_file() -> Optional[str]:
         return None
 
 
-def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None) -> None:
+def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None):
     """Level 1: yt-dlp with Chrome User-Agent and full error logging."""
     import glob
     import yt_dlp
@@ -264,17 +264,32 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         file_size = os.path.getsize(audio_path)
         logger.info("[DOWNLOAD] File size: %.1f MB", file_size / 1024 / 1024)
         if file_size > 24 * 1024 * 1024:
-            logger.warning("[DOWNLOAD] File too large (%.1f MB), trimming to 10 min", file_size / 1024 / 1024)
-            trimmed_path = audio_path.rsplit(".", 1)[0] + "_trimmed.mp3"
-            import subprocess
-            subprocess.run([
-                "ffmpeg", "-i", audio_path, "-t", "600",
-                "-acodec", "libmp3lame", "-q:a", "9",
-                trimmed_path, "-y"
-            ], check=True, capture_output=True)
+            import subprocess, math, json as _json
+            logger.warning("[DOWNLOAD] File too large (%.1f MB), splitting into chunks", file_size / 1024 / 1024)
+            # Get duration via ffprobe
+            result = subprocess.run([
+                "ffprobe", "-v", "quiet", "-print_format", "json",
+                "-show_format", audio_path
+            ], capture_output=True, text=True, check=True)
+            duration_sec = float(_json.loads(result.stdout)["format"]["duration"])
+            chunk_duration = 600  # 10 minutes per chunk
+            num_chunks = math.ceil(duration_sec / chunk_duration)
+            logger.info("[DOWNLOAD] Splitting into %d chunks of %d sec", num_chunks, chunk_duration)
+            chunk_paths = []
+            for i in range(num_chunks):
+                start = i * chunk_duration
+                chunk_path = audio_path.rsplit(".", 1)[0] + f"_chunk{i}.mp3"
+                subprocess.run([
+                    "ffmpeg", "-i", audio_path,
+                    "-ss", str(start), "-t", str(chunk_duration),
+                    "-acodec", "libmp3lame", "-q:a", "9",
+                    chunk_path, "-y"
+                ], check=True, capture_output=True)
+                chunk_paths.append(chunk_path)
+                logger.info("[DOWNLOAD] Chunk %d: %.1f MB", i + 1, os.path.getsize(chunk_path) / 1024 / 1024)
             os.remove(audio_path)
-            os.rename(trimmed_path, audio_path)
-            logger.info("[DOWNLOAD] Trimmed file size: %.1f MB", os.path.getsize(audio_path) / 1024 / 1024)
+            logger.info("[bot_tasks] %s: Downloaded via yt-dlp (chunked)", task_id)
+            return chunk_paths
 
     logger.info("[bot_tasks] %s: Downloaded via yt-dlp", task_id)
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
@@ -423,41 +438,46 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             cookies_file = _get_cookie_file()
             logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
-            if not os.path.exists("/tmp/" + task_id + ".mp3"):
-                # Level 1: yt-dlp
-                try:
-                    await asyncio.wait_for(
-                        asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
-                        timeout=DOWNLOAD_TIMEOUT,
-                    )
-                except Exception as e1:
-                    logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
-                    print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
-                    raise
-
-            if not os.path.exists(audio_path):
-                for ext in [".mp3", ".m4a", ".webm", ".opus"]:
-                    alt = "/tmp/" + task_id + ext
-                    if os.path.exists(alt):
-                        audio_path = alt
-                        break
-                else:
-                    raise FileNotFoundError("Audio not found at /tmp/" + task_id + ".*")
-
-            file_size = os.path.getsize(audio_path)
-            logger.info(
-                "[bot_tasks] %s: audio %d bytes, sending to Groq Whisper",
-                task_id,
-                file_size,
-            )
+            # Level 1: yt-dlp
+            try:
+                download_result = await asyncio.wait_for(
+                    asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
+                    timeout=DOWNLOAD_TIMEOUT,
+                )
+            except Exception as e1:
+                logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
+                raise
 
             tasks_store[task_id]["stage"] = "transcribing"
-            raw_text = await asyncio.to_thread(
-                transcribe_with_groq_sync, audio_path, language
-            )
-            logger.info(
-                "[bot_tasks] %s: groq transcription done (%d chars)", task_id, len(raw_text)
-            )
+            if isinstance(download_result, list):
+                # Multiple chunks — transcribe each and combine
+                chunk_texts = []
+                for i, chunk_path in enumerate(download_result):
+                    logger.info("[GROQ] Transcribing chunk %d/%d", i + 1, len(download_result))
+                    chunk_text = await asyncio.to_thread(
+                        transcribe_with_groq_sync, chunk_path, language
+                    )
+                    chunk_texts.append(chunk_text)
+                    os.remove(chunk_path)
+                raw_text = " ".join(chunk_texts)
+                logger.info("[GROQ] All chunks transcribed, total: %d chars", len(raw_text))
+            else:
+                # Single file
+                if not os.path.exists(audio_path):
+                    for ext in [".mp3", ".m4a", ".webm", ".opus"]:
+                        alt = "/tmp/" + task_id + ext
+                        if os.path.exists(alt):
+                            audio_path = alt
+                            break
+                    else:
+                        raise FileNotFoundError("Audio not found at /tmp/" + task_id + ".*")
+                file_size = os.path.getsize(audio_path)
+                logger.info("[bot_tasks] %s: audio %d bytes, sending to Groq Whisper", task_id, file_size)
+                raw_text = await asyncio.to_thread(
+                    transcribe_with_groq_sync, audio_path, language
+                )
+                logger.info("[bot_tasks] %s: groq transcription done (%d chars)", task_id, len(raw_text))
 
         # Step 3: Format with Claude
         tasks_store[task_id]["stage"] = "formatting"
