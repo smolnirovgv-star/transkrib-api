@@ -120,30 +120,39 @@ class TaskCreate(BaseModel):
 
 def transcribe_with_groq_sync(audio_path: str, language: str = "auto") -> str:
     """Transcribe audio using Groq Whisper API (synchronous)."""
+    import time
     groq_key = os.environ.get("GROQ_API_KEY", "")
     if not groq_key:
         raise ValueError("GROQ_API_KEY not set in environment")
 
     api_url = "https://api.groq.com/openai/v1/audio/transcriptions"
 
-    with open(audio_path, "rb") as f:
-        files = {"file": (os.path.basename(audio_path), f, "audio/mpeg")}
-        data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
-        if language and language != "auto":
-            data["language"] = language
+    for attempt in range(3):
+        try:
+            with open(audio_path, "rb") as f:
+                files = {"file": (os.path.basename(audio_path), f, "audio/mpeg")}
+                data = {"model": "whisper-large-v3-turbo", "response_format": "text"}
+                if language and language != "auto":
+                    data["language"] = language
 
-        with httpx.Client(timeout=120.0) as client:
-            resp = client.post(
-                api_url,
-                headers={"Authorization": "Bearer " + groq_key},
-                files=files,
-                data=data,
-            )
-            if resp.status_code != 200:
-                raise RuntimeError(
-                    "Groq API error " + str(resp.status_code) + ": " + resp.text[:300]
-                )
-            return resp.text
+                with httpx.Client(timeout=120.0) as client:
+                    resp = client.post(
+                        api_url,
+                        headers={"Authorization": "Bearer " + groq_key},
+                        files=files,
+                        data=data,
+                    )
+                    if resp.status_code != 200:
+                        raise RuntimeError(
+                            "Groq API error " + str(resp.status_code) + ": " + resp.text[:300]
+                        )
+                    return resp.text
+        except Exception as e:
+            logger.warning("[GROQ] attempt %d/3 failed: %s", attempt + 1, str(e)[:200])
+            if attempt < 2:
+                time.sleep(5)
+            else:
+                raise
 
 
 
