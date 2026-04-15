@@ -367,6 +367,25 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["debug_log"] = "run_transcription started"
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
 
+        # Check video duration before processing
+        try:
+            import yt_dlp as ytdlp
+            with ytdlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+                info = ydl.extract_info(url, download=False)
+                duration = info.get("duration", 0)
+                logger.info("[DURATION] Video duration: %d seconds (%.1f hours)", duration, duration / 3600)
+                if duration > 3 * 3600:  # > 3 hours
+                    hours = duration / 3600
+                    tasks_store[task_id]["status"] = "error"
+                    tasks_store[task_id]["result"] = (
+                        f"⚠️ Видео слишком длинное ({hours:.1f} ч).\n\n"
+                        f"Максимальная длина для обработки — <b>3 часа</b>.\n"
+                        f"Пожалуйста, разделите видео на части по <b>1 часу</b> и отправьте каждую часть отдельно."
+                    )
+                    return
+        except Exception as ed:
+            logger.warning("[DURATION] Could not check duration: %s", ed)
+
         is_youtube = "youtube.com" in url or "youtu.be" in url
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
