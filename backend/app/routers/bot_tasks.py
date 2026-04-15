@@ -47,7 +47,7 @@ router = APIRouter()
 
 tasks_store: dict = {}
 
-DOWNLOAD_TIMEOUT = 300
+DOWNLOAD_TIMEOUT = 600
 
 FORMATTING_PROMPT = """Ты — профессиональный редактор. Тебе дана сырая транскрипция видео/аудио для Telegram.
 
