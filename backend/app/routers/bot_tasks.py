@@ -287,7 +287,7 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
         proxy_url = os.getenv("YOUTUBE_PROXY", "").strip()
         if proxy_url:
             from youtube_transcript_api.proxies import GenericProxyConfig
-            proxies = GenericProxyConfig(proxy_url)
+            proxies = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url)
             logger.info("[TRANSCRIPT-API] Using proxy: %s", proxy_url[:30])
             ytt_api = YouTubeTranscriptApi(http_client=session, proxies=proxies)
         else:
