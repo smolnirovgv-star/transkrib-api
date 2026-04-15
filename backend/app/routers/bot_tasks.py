@@ -251,6 +251,31 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
 
+def _get_transcript_supadata(url: str) -> str:
+    """Get YouTube transcript via Supadata API — works from any IP, no proxy needed."""
+    api_key = os.getenv("SUPADATA_API_KEY", "")
+    if not api_key:
+        raise ValueError("SUPADATA_API_KEY not set")
+
+    import urllib.parse
+    encoded_url = urllib.parse.quote(url, safe="")
+    api_url = f"https://api.supadata.ai/v1/transcript?url={encoded_url}&text=true"
+
+    logger.info("[SUPADATA] Fetching transcript for: %s", url[:80])
+    resp = requests.get(api_url, headers={"x-api-key": api_key}, timeout=30)
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Supadata error {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    text = data.get("content", "")
+    if not text:
+        raise RuntimeError(f"Supadata: empty content in response: {str(data)[:200]}")
+
+    logger.info("[SUPADATA] Got %d chars", len(text))
+    return text
+
+
 def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
     """Get subtitles directly from YouTube without downloading audio."""
     if not HAS_TRANSCRIPT_API:
@@ -316,8 +341,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         is_youtube = "youtube.com" in url or "youtu.be" in url
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
-        # Step 1: Try YouTube Transcript API directly (fast, no audio download)
-        if is_youtube and HAS_TRANSCRIPT_API:
+        # Step 1a: Try Supadata API first (works from any IP, no proxy)
+        if is_youtube and os.getenv("SUPADATA_API_KEY"):
+            try:
+                logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
+                raw_text = await asyncio.to_thread(_get_transcript_supadata, url)
+                logger.info("[SUPADATA] %s: SUCCESS! Got %d chars", task_id, len(raw_text))
+                tasks_store[task_id]["debug_log"] = "supadata: SUCCESS"
+            except Exception as es:
+                logger.warning("[SUPADATA] %s: failed: %s — trying transcript-api", task_id, es)
+                tasks_store[task_id]["debug_log"] = f"supadata FAILED: {str(es)[:200]}"
+                raw_text = None
+
+        # Step 1b: Try YouTube Transcript API directly (fast, no audio download)
+        if not raw_text and is_youtube and HAS_TRANSCRIPT_API:
             try:
                 logger.info("[TRANSCRIPT-API] %s: trying direct transcript for: %s", task_id, url)
                 raw_text = await asyncio.to_thread(
@@ -329,7 +366,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.warning("[TRANSCRIPT-API] %s: failed: %s — falling back to audio download", task_id, et)
                 tasks_store[task_id]["debug_log"] = f"transcript-api FAILED: {str(et)[:200]}"
                 raw_text = None
-        elif is_youtube and not HAS_TRANSCRIPT_API:
+        elif not raw_text and is_youtube and not HAS_TRANSCRIPT_API:
             logger.warning("[TRANSCRIPT-API] %s: library not available, skipping to audio download", task_id)
 
         # Step 2: If no transcript — download audio + Groq (fallback)
