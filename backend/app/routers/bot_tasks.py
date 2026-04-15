@@ -430,7 +430,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
         # Step 1a: Try Supadata API first (works from any IP, no proxy)
         is_supadata_supported = is_youtube or "vk.com/video" in url
-        if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text:
+        if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text and fmt != "srt":
             try:
                 logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
                 raw_text = await asyncio.to_thread(_get_transcript_supadata, url)
