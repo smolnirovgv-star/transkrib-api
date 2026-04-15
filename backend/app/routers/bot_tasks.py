@@ -284,7 +284,18 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
             for cookie in cj:
                 session.cookies.set(cookie.name, cookie.value, domain=cookie.domain)
             logger.info("[TRANSCRIPT-API] Loaded %d cookies into session", len(session.cookies))
-        ytt_api = YouTubeTranscriptApi(http_client=session)
+        proxy_url = os.getenv("YOUTUBE_PROXY", "").strip()
+        if proxy_url:
+            from youtube_transcript_api.proxies import GenericProxyConfig
+            proxies = GenericProxyConfig(
+                http_proxy=proxy_url,
+                https_proxy=proxy_url,
+            )
+            logger.info("[TRANSCRIPT-API] Using proxy: %s", proxy_url[:30])
+            ytt_api = YouTubeTranscriptApi(http_client=session, proxies=proxies)
+        else:
+            logger.info("[TRANSCRIPT-API] No proxy configured (YOUTUBE_PROXY not set)")
+            ytt_api = YouTubeTranscriptApi(http_client=session)
         transcript = ytt_api.fetch(video_id, languages=[lang, "en", "ru"])
         full_text = " ".join([entry.text for entry in transcript])
     finally:
