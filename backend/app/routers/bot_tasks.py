@@ -404,6 +404,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["status"] = "processing"
         tasks_store[task_id]["stage"] = "downloading"
         tasks_store[task_id]["debug_log"] = "run_transcription started"
+
+        # Normalize vkvideo.ru -> vk.com/video (Supadata supports vk.com but not vkvideo.ru)
+        if "vkvideo.ru/video" in url:
+            url = url.replace("vkvideo.ru/video", "vk.com/video")
+            logger.info("[URL] Normalized vkvideo.ru -> vk.com/video: %s", url)
+            tasks_store[task_id]["url"] = url
+
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
             task_id, fmt, "srt" if fmt == "fmt_srt" else "text")
@@ -431,7 +438,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
         # Step 1a: Try Supadata API first (works from any IP, no proxy)
-        is_supadata_supported = is_youtube or "vk.com/video" in url
+        is_supadata_supported = is_youtube or "vk.com/video" in url or "vkvideo.ru" in url
         if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text and fmt != "fmt_srt":
             try:
                 logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
