@@ -414,6 +414,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
             task_id, fmt, "srt" if fmt == "fmt_srt" else "text")
+        output_format = "srt" if fmt == "fmt_srt" else "text"
 
         # Check video duration before processing
         try:
@@ -483,7 +484,6 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 raise
 
             tasks_store[task_id]["stage"] = "transcribing"
-            output_format = "srt" if fmt == "fmt_srt" else "text"
             if isinstance(download_result, list):
                 # Multiple chunks — transcribe each and combine
                 chunk_texts = []
