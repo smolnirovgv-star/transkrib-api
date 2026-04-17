@@ -424,7 +424,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
             task_id, fmt, "srt" if fmt == "fmt_srt" else "text")
-        output_format = "srt" if fmt == "fmt_srt" else "text"
+        output_format = "srt" if fmt == "fmt_srt" else "text"  # fmt_md treated as text
 
         # Check video duration before processing
         try:
