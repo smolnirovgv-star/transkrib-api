@@ -68,12 +68,12 @@ FORMATTING_PROMPT = """Ты — профессиональный редакто�
 Верни ТОЛЬКО отформатированный текст, без пояснений."""
 
 
-def format_with_claude_sync(raw_text: str) -> str:
-    """Format raw transcription into structured readable text using Claude API."""
+def format_with_claude_sync(raw_text: str) -> tuple:
+    """Format raw transcription. Returns (text, input_tokens, output_tokens, cost_usd)."""
     api_key = os.environ.get("APP_ANTHROPIC_API_KEY", "")
     if not api_key:
         logger.warning("[bot_tasks] APP_ANTHROPIC_API_KEY not set, skipping formatting")
-        return raw_text
+        return raw_text, 0, 0, 0.0
 
     text_to_format = raw_text[:12000]
 
@@ -99,16 +99,22 @@ def format_with_claude_sync(raw_text: str) -> str:
             )
             if resp.status_code != 200:
                 logger.error("[bot_tasks] Claude formatting error %d: %s", resp.status_code, resp.text[:300])
-                return raw_text
+                return raw_text, 0, 0, 0.0
             data = resp.json()
             formatted = ""
             for block in data.get("content", []):
                 if block.get("type") == "text":
                     formatted += block["text"]
-            return formatted if formatted.strip() else raw_text
+            usage = data.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            cost_usd = (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000
+            logger.info("[CLAUDE_USAGE] input=%d output=%d cost=$%.4f", input_tokens, output_tokens, cost_usd)
+            result_text = formatted if formatted.strip() else raw_text
+            return result_text, input_tokens, output_tokens, cost_usd
     except Exception as e:
         logger.error("[bot_tasks] Claude formatting exception: %s", e)
-        return raw_text
+        return raw_text, 0, 0, 0.0
 
 
 class TaskCreate(BaseModel):
@@ -560,12 +566,17 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         else:
             tasks_store[task_id]["stage"] = "formatting"
             logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
-            formatted_text = await asyncio.to_thread(format_with_claude_sync, raw_text)
+            formatted_text, inp_tok, out_tok, cost = await asyncio.to_thread(format_with_claude_sync, raw_text)
             logger.info(
                 "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
             )
             tasks_store[task_id]["status"] = "done"
             tasks_store[task_id]["transcription"] = formatted_text
+            tasks_store[task_id]["claude_usage"] = {
+                "input_tokens": inp_tok,
+                "output_tokens": out_tok,
+                "cost_usd": cost,
+            }
 
     except asyncio.TimeoutError:
         logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
