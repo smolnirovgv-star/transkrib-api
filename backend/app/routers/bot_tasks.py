@@ -201,7 +201,11 @@ def _get_cookie_file() -> Optional[str]:
             return None
 
     try:
-        cookie_bytes = base64.b64decode(b64)
+        if b64.strip().startswith('#'):
+            cookie_bytes = b64.encode('utf-8')
+            logger.info("[COOKIES] Detected plain text cookies (starts with #)")
+        else:
+            cookie_bytes = base64.b64decode(b64)
         fd, path = tempfile.mkstemp(suffix=".txt", prefix="yt_cookies_")
         with os.fdopen(fd, "wb") as f:
             f.write(cookie_bytes)
