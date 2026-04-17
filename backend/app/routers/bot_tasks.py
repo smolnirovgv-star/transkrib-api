@@ -439,6 +439,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         except Exception as ed:
             logger.warning("[DURATION] Could not check duration: %s", ed)
 
+        if tasks_store[task_id].get("status") == "cancelled":
+            logger.info("[bot_tasks] %s: task cancelled by user", task_id)
+            return
+
         is_youtube = "youtube.com" in url or "youtu.be" in url
         print(f"[Download] URL: {url}, is_youtube={is_youtube}")
 
@@ -454,6 +458,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.warning("[SUPADATA] %s: failed: %s — trying transcript-api", task_id, es)
                 tasks_store[task_id]["debug_log"] = f"supadata FAILED: {str(es)[:200]}"
                 raw_text = None
+
+        if tasks_store[task_id].get("status") == "cancelled":
+            logger.info("[bot_tasks] %s: task cancelled by user", task_id)
+            return
 
         # Step 1b: Try YouTube Transcript API directly (fast, no audio download)
         if not raw_text and is_youtube and HAS_TRANSCRIPT_API:
@@ -487,6 +495,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
                 raise
 
+            if tasks_store[task_id].get("status") == "cancelled":
+                logger.info("[bot_tasks] %s: task cancelled by user", task_id)
+                return
+
             tasks_store[task_id]["stage"] = "transcribing"
             if isinstance(download_result, list):
                 # Multiple chunks — transcribe each and combine
@@ -498,6 +510,9 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     )
                     chunk_texts.append(chunk_text)
                     os.remove(chunk_path)
+                    if tasks_store[task_id].get("status") == "cancelled":
+                        logger.info("[bot_tasks] %s: task cancelled by user", task_id)
+                        return
                 if output_format == "srt":
                     # Renumber SRT blocks sequentially across chunks
                     combined_lines = []
@@ -590,6 +605,13 @@ async def get_task_status(task_id: str):
     if task_id not in tasks_store:
         return {"status": "error", "error": "Task not found"}
     return tasks_store[task_id]
+
+@router.post("/api/tasks/{task_id}/cancel")
+async def cancel_task(task_id: str):
+    if task_id in tasks_store:
+        tasks_store[task_id]["status"] = "cancelled"
+        return {"ok": True}
+    return {"ok": False}
 
 @router.get("/api/debug/logs")
 async def get_debug_logs(n: int = 100):
