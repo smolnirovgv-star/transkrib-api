@@ -499,6 +499,68 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     print(f"[bot_tasks] {task_id}: Downloaded via yt-dlp")
 
 
+def _download_video_cobalt(url: str, task_id: str):
+    """
+    Скачивает видео через cobalt.tools API.
+    Возвращает путь к скачанному MP4 или None при ошибке.
+    Cobalt.tools обходит YouTube IP-блокировки серверных IP.
+    """
+    import shutil
+    output_path = f"/tmp/{task_id}_video.mp4"
+
+    logger.info("[COBALT] %s: requesting video URL for: %s", task_id, url[:80])
+
+    try:
+        resp = requests.post(
+            "https://api.cobalt.tools/",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            json={
+                "url": url,
+                "videoQuality": "480",
+                "downloadMode": "auto",
+                "filenameStyle": "basic",
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            logger.error("[COBALT] API error %d: %s", resp.status_code, resp.text[:200])
+            return None
+        data = resp.json()
+        status = data.get("status")
+        logger.info("[COBALT] API status: %s", status)
+        if status not in ("tunnel", "redirect", "stream"):
+            logger.error("[COBALT] unexpected status: %s, data: %s", status, str(data)[:200])
+            return None
+        direct_url = data.get("url")
+        if not direct_url:
+            logger.error("[COBALT] no url in response: %s", str(data)[:200])
+            return None
+        logger.info("[COBALT] got direct URL, downloading...")
+    except Exception as e:
+        logger.error("[COBALT] API request failed: %s", e)
+        return None
+
+    try:
+        with requests.get(direct_url, stream=True, timeout=300,
+                          headers={"User-Agent": "Mozilla/5.0"}) as r:
+            if r.status_code != 200:
+                logger.error("[COBALT] download failed: %d", r.status_code)
+                return None
+            with open(output_path, "wb") as f:
+                shutil.copyfileobj(r.raw, f)
+        file_size = os.path.getsize(output_path) / 1024 / 1024
+        logger.info("[COBALT] downloaded %.1f MB -> %s", file_size, output_path)
+        return output_path
+    except Exception as e:
+        logger.error("[COBALT] download exception: %s", e)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return None
+
+
 def _get_transcript_supadata(url: str) -> str:
     """Get YouTube transcript via Supadata API — works from any IP, no proxy needed."""
     api_key = os.getenv("SUPADATA_API_KEY", "")
@@ -806,25 +868,68 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
                 if not os.path.exists(video_path):
                     logger.info("[CUT] %s: downloading video for cutting...", task_id)
-                    try:
-                        cookies_file_v = _get_cookie_file()
-                        await asyncio.wait_for(
-                            asyncio.to_thread(
-                                _download_with_ytdlp,
+                    video_path = None
+
+                    # Level 0: cobalt.tools (обходит YouTube IP-блокировки)
+                    is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                    if is_youtube_cut:
+                        try:
+                            cobalt_path = await asyncio.to_thread(
+                                _download_video_cobalt,
                                 tasks_store[task_id].get("url", url),
-                                task_id + "_video",
-                                cookies_file_v,
-                                True
-                            ),
-                            timeout=DOWNLOAD_TIMEOUT
-                        )
-                        import glob as _glob
-                        video_files = _glob.glob(f"/tmp/{task_id}_video.*")
-                        if video_files:
-                            video_path = video_files[0]
-                    except Exception as e_v:
-                        logger.error("[CUT] %s: video download failed: %s", task_id, e_v)
-                        video_path = None
+                                task_id
+                            )
+                            if cobalt_path and os.path.exists(cobalt_path):
+                                video_path = cobalt_path
+                                logger.info("[CUT] %s: cobalt.tools success", task_id)
+                        except Exception as e_c:
+                            logger.error("[CUT] %s: cobalt failed: %s", task_id, e_c)
+
+                    # Level 1: yt-dlp (для не-YouTube или если cobalt не сработал)
+                    if not video_path:
+                        try:
+                            cookies_file_v = _get_cookie_file()
+                            await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    _download_with_ytdlp,
+                                    tasks_store[task_id].get("url", url),
+                                    task_id + "_video",
+                                    cookies_file_v,
+                                    True
+                                ),
+                                timeout=DOWNLOAD_TIMEOUT
+                            )
+                            import glob as _glob
+                            video_files = _glob.glob(f"/tmp/{task_id}_video.*")
+                            if video_files:
+                                video_path = video_files[0]
+                                logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
+                        except Exception as e_v:
+                            logger.error("[CUT] %s: yt-dlp also failed: %s", task_id, e_v)
+
+                    if not video_path:
+                        logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
+
+                # Конвертировать в MP4 если нужно
+                if video_path and not video_path.endswith(".mp4"):
+                    logger.info("[CUT] %s: converting to MP4...", task_id)
+                    mp4_path = f"/tmp/{task_id}_video.mp4"
+                    try:
+                        import subprocess as _sp
+                        result = _sp.run([
+                            "ffmpeg", "-y", "-i", video_path,
+                            "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+                            "-c:a", "aac", "-b:a", "128k",
+                            mp4_path
+                        ], capture_output=True, text=True, timeout=300)
+                        if result.returncode == 0:
+                            os.remove(video_path)
+                            video_path = mp4_path
+                            logger.info("[CUT] %s: converted to MP4", task_id)
+                        else:
+                            logger.warning("[CUT] %s: MP4 conversion failed, using original", task_id)
+                    except Exception as e_conv:
+                        logger.warning("[CUT] %s: conversion error: %s", task_id, e_conv)
 
                 if video_path and os.path.exists(video_path):
                     output_video = f"/tmp/{task_id}_cut.mp4"
