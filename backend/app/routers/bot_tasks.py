@@ -595,17 +595,24 @@ def _download_video_rapidapi(url: str, task_id: str):
                 "x-rapidapi-key": api_key,
                 "x-rapidapi-host": "youtube-to-mp4.p.rapidapi.com",
             },
-            params={"url": url},
+            params={"url": url, "title": "video"},
             timeout=30,
         )
         if resp.status_code != 200:
             logger.error("[RAPIDAPI] error %d: %s", resp.status_code, resp.text[:200])
             return None
         data = resp.json()
-        logger.info("[RAPIDAPI] response: %s", str(data)[:200])
-        mp4_url = (data.get("url") or data.get("mp4") or
-                   data.get("link") or data.get("download_url") or
-                   data.get("video_url"))
+        logger.info("[RAPIDAPI] full response: %s", str(data)[:300])
+        mp4_url = (
+            data.get("url") or
+            data.get("mp4") or
+            data.get("link") or
+            data.get("download") or
+            data.get("downloadUrl") or
+            data.get("video_url") or
+            data.get("videoUrl") or
+            (data[0].get("url") if isinstance(data, list) and data else None)
+        )
         if not mp4_url:
             logger.error("[RAPIDAPI] no download URL in response: %s", str(data)[:300])
             return None
