@@ -511,9 +511,10 @@ def _download_video_cobalt(url: str, task_id: str):
 
     logger.info("[COBALT] %s: requesting video URL for: %s", task_id, url[:80])
 
+    cobalt_url = os.getenv("COBALT_API_URL", "https://api.cobalt.tools/").rstrip("/") + "/"
     try:
         resp = requests.post(
-            "https://api.cobalt.tools/",
+            cobalt_url,
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
