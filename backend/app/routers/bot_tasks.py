@@ -9,6 +9,7 @@ import base64
 import tempfile
 import logging
 import shutil
+import traceback
 import httpx
 import requests
 import re
@@ -930,6 +931,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         if cut_min_val > 0:
             chunk_result = tasks_store[task_id].get("chunk_analysis", {})
             chunks = chunk_result.get("chunks", [])
+            logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
+                        task_id, len(chunks), bool(chunk_result))
 
             if chunks:
                 tasks_store[task_id]["stage"] = "cutting_video"
@@ -943,7 +946,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
                     # Level 0: cobalt.tools (обходит YouTube IP-блокировки)
                     is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                    logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
+                                task_id, is_youtube_cut, url[:60])
                     if is_youtube_cut:
+                        logger.info("[CUT] %s: trying cobalt...", task_id)
                         try:
                             cobalt_path = await asyncio.to_thread(
                                 _download_video_cobalt,
@@ -953,11 +959,15 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                             if cobalt_path and os.path.exists(cobalt_path):
                                 video_path = cobalt_path
                                 logger.info("[CUT] %s: cobalt.tools success", task_id)
+                            else:
+                                logger.warning("[CUT] %s: cobalt returned no file", task_id)
                         except Exception as e_c:
-                            logger.error("[CUT] %s: cobalt failed: %s", task_id, e_c)
+                            logger.error("[CUT] %s: cobalt exception: %s", task_id,
+                                         traceback.format_exc())
 
                     # Level 1: RapidAPI (если cobalt не дал файл)
                     if not video_path and is_youtube_cut:
+                        logger.info("[CUT] %s: trying rapidapi...", task_id)
                         try:
                             video_path = await asyncio.to_thread(
                                 _download_video_rapidapi,
@@ -966,11 +976,15 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                             )
                             if video_path:
                                 logger.info("[CUT] %s: RapidAPI success", task_id)
+                            else:
+                                logger.warning("[CUT] %s: RapidAPI returned no file", task_id)
                         except Exception as e_r:
-                            logger.error("[CUT] %s: RapidAPI failed: %s", task_id, e_r)
+                            logger.error("[CUT] %s: RapidAPI exception: %s", task_id,
+                                         traceback.format_exc())
 
                     # Level 2: yt-dlp (для не-YouTube или если cobalt/RapidAPI не сработали)
                     if not video_path:
+                        logger.info("[CUT] %s: trying yt-dlp...", task_id)
                         try:
                             cookies_file_v = _get_cookie_file()
                             await asyncio.wait_for(
@@ -988,9 +1002,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                             if video_files:
                                 video_path = video_files[0]
                                 logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
+                            else:
+                                logger.warning("[CUT] %s: yt-dlp returned no file", task_id)
                         except Exception as e_v:
-                            logger.error("[CUT] %s: yt-dlp also failed: %s", task_id, e_v)
+                            logger.error("[CUT] %s: yt-dlp exception: %s", task_id,
+                                         traceback.format_exc())
 
+                    logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
                     if not video_path:
                         logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
 
