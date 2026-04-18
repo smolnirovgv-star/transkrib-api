@@ -925,8 +925,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     }
 
         # === VIDEO CUTTING ===
-        if cut_min_val > 0 and tasks_store[task_id].get("chunk_analysis"):
-            chunk_result = tasks_store[task_id]["chunk_analysis"]
+        logger.info("[CUT_ENTRY] task=%s cut_min_val=%d fmt=%r output_format=%r",
+                    task_id, cut_min_val, fmt, output_format)
+        if cut_min_val > 0:
+            chunk_result = tasks_store[task_id].get("chunk_analysis", {})
             chunks = chunk_result.get("chunks", [])
 
             if chunks:
