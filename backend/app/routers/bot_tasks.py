@@ -126,46 +126,30 @@ def format_with_claude_sync(raw_text: str) -> tuple:
 
 
 def analyze_chunks_with_claude(
-    raw_text: str,
-    target_minutes: int,
-    total_duration_seconds: int
-) -> dict:
-    """Анализирует транскрипцию и возвращает план нарезки."""
+    raw_text,
+    target_minutes,
+    total_duration_seconds
+):
+    """Analyse transcript, return chunking plan."""
     api_key = os.environ.get("APP_ANTHROPIC_API_KEY", "")
     if not api_key:
         return {"error": "API key not set"}
 
     total_minutes = max(1, total_duration_seconds // 60)
+    nl = chr(10)
     prompt = (
-        "Ты — редактор видеоконтента. Проанализируй транскрипцию видео.
-
-"
-        "ЗАДАЧА:
-1. Разбей транскрипцию на смысловые блоки
-"
-        "2. Определи важность каждого блока (1-10)
-"
-        f"3. Отбери блоки которые суммарно уложатся в {target_minutes} минут
-"
-        "4. Определи потери: какие важные блоки НЕ вошли
-
-"
-        f"Длительность видео: {total_minutes} мин
-"
-        f"Целевая длительность нарезки: {target_minutes} мин
-
-"
-        f"Транскрипция:
-{raw_text[:8000]}
-
-"
-        "Ответь ТОЛЬКО в JSON (без markdown, без пояснений).
-"
-        "Структура: {chunks:[{start_time,end_time,topic,importance,include}],"
-        "kept_minutes,lost_important_count,suggestion_minutes,warning_type,warning_message}
-
-"
-        "warning_type: loss | surplus | ok"
+        "You are a video content editor. Analyse the video transcript." + nl + nl
+        + "TASK:" + nl
+        + "1. Split into semantic blocks" + nl
+        + "2. Rate importance 1-10" + nl
+        + f"3. Select blocks fitting in {target_minutes} min" + nl
+        + "4. Identify left-out important blocks" + nl + nl
+        + f"Video duration: {total_minutes} min, Target: {target_minutes} min" + nl + nl
+        + "Transcript:" + nl + raw_text[:8000] + nl + nl
+        + "Reply ONLY in JSON (no markdown):" + nl
+        + '{"chunks":[{"start_time","end_time","topic","importance","include"}],' + nl
+        + '"kept_minutes","lost_important_count","suggestion_minutes","warning_type","warning_message"}' + nl + nl
+        + "warning_type: loss | surplus | ok"
     )
 
     try:
@@ -183,31 +167,26 @@ def analyze_chunks_with_claude(
                     "messages": [{"role": "user", "content": prompt}],
                 },
             )
-        if resp.status_code \!= 200:
+        if resp.status_code != 200:
             logger.error("[CHUNKS] Claude error %d: %s", resp.status_code, resp.text[:200])
             return {"error": f"Claude error {resp.status_code}"}
-
         data = resp.json()
         text = ""
         for block in data.get("content", []):
             if block.get("type") == "text":
                 text += block["text"]
-
         import json as _json
         text = text.strip()
-        if text.startswith("'"+"''"+"'"):
-            text = text.split("'"+"''"+"'")[1]
+        t3 = chr(96) * 3
+        if text.startswith(t3):
+            text = text.split(t3)[1]
             if text.startswith("json"):
                 text = text[4:]
         result = _json.loads(text.strip())
-        logger.info(
-            "[CHUNKS] done: %d chunks, kept=%.1f min, warning=%s",
-            len(result.get("chunks", [])),
-            result.get("kept_minutes", 0),
-            result.get("warning_type", "?")
-        )
+        logger.info("[CHUNKS] done: %d chunks, kept=%.1f min, warning=%s",
+            len(result.get("chunks", [])), result.get("kept_minutes", 0),
+            result.get("warning_type", "?"))
         return result
-
     except Exception as e:
         logger.error("[CHUNKS] error: %s", e)
         return {"error": str(e)}
@@ -661,14 +640,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             logger.info("[bot_tasks] %s: no speech detected", task_id)
             tasks_store[task_id]["status"] = "no_speech"
             tasks_store[task_id]["transcription"] = (
-                "🎬 В этом видео не обнаружена речь человека.
-
-"
+                "🎬 В этом видео не обнаружена речь человека.\n\n"
                 "Transkrib работает с видео где есть голос. "
                 "Для видео без речи (природа, стройка, музыка) — "
-                "скоро появится Vision-анализ.
-
-"
+                "скоро появится Vision-анализ.\n\n"
                 "Попробуйте другое видео!"
             )
             return
