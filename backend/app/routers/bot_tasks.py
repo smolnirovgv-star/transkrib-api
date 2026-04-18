@@ -573,6 +573,63 @@ def _download_video_cobalt(url: str, task_id: str):
         return None
 
 
+def _download_video_rapidapi(url: str, task_id: str):
+    """
+    Скачивает видео через RapidAPI YouTube to MP4.
+    Fallback когда cobalt недоступен.
+    Возвращает путь к mp4 или None.
+    """
+    api_key = os.environ.get("RAPIDAPI_KEY", "")
+    if not api_key:
+        logger.error("[RAPIDAPI] RAPIDAPI_KEY not set")
+        return None
+
+    output_path = f"/tmp/{task_id}_video.mp4"
+    logger.info("[RAPIDAPI] requesting MP4 for: %s", url[:80])
+
+    try:
+        resp = requests.get(
+            "https://youtube-to-mp4.p.rapidapi.com/",
+            headers={
+                "x-rapidapi-key": api_key,
+                "x-rapidapi-host": "youtube-to-mp4.p.rapidapi.com",
+            },
+            params={"url": url},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            logger.error("[RAPIDAPI] error %d: %s", resp.status_code, resp.text[:200])
+            return None
+        data = resp.json()
+        logger.info("[RAPIDAPI] response: %s", str(data)[:200])
+        mp4_url = (data.get("url") or data.get("mp4") or
+                   data.get("link") or data.get("download_url") or
+                   data.get("video_url"))
+        if not mp4_url:
+            logger.error("[RAPIDAPI] no download URL in response: %s", str(data)[:300])
+            return None
+        logger.info("[RAPIDAPI] downloading from CDN...")
+        total = 0
+        with requests.get(mp4_url, stream=True, timeout=300,
+                          headers={"User-Agent": "Mozilla/5.0"}) as r:
+            if r.status_code != 200:
+                logger.error("[RAPIDAPI] CDN download failed: %d", r.status_code)
+                return None
+            with open(output_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        total += len(chunk)
+        if total < 10000:
+            logger.error("[RAPIDAPI] file too small: %d bytes", total)
+            return None
+        logger.info("[RAPIDAPI] downloaded %.1f MB -> %s", total / 1024 / 1024, output_path)
+        return output_path
+    except Exception as e:
+        logger.error("[RAPIDAPI] exception: %s", e)
+        return None
+
+
 def _get_transcript_supadata(url: str) -> str:
     """Get YouTube transcript via Supadata API — works from any IP, no proxy needed."""
     api_key = os.getenv("SUPADATA_API_KEY", "")
@@ -897,7 +954,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                         except Exception as e_c:
                             logger.error("[CUT] %s: cobalt failed: %s", task_id, e_c)
 
-                    # Level 1: yt-dlp (для не-YouTube или если cobalt не сработал)
+                    # Level 1: RapidAPI (если cobalt не дал файл)
+                    if not video_path and is_youtube_cut:
+                        try:
+                            video_path = await asyncio.to_thread(
+                                _download_video_rapidapi,
+                                tasks_store[task_id].get("url", url),
+                                task_id
+                            )
+                            if video_path:
+                                logger.info("[CUT] %s: RapidAPI success", task_id)
+                        except Exception as e_r:
+                            logger.error("[CUT] %s: RapidAPI failed: %s", task_id, e_r)
+
+                    # Level 2: yt-dlp (для не-YouTube или если cobalt/RapidAPI не сработали)
                     if not video_path:
                         try:
                             cookies_file_v = _get_cookie_file()
