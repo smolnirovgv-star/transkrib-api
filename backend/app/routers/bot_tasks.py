@@ -660,7 +660,6 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             logger.info(
                 "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
             )
-            tasks_store[task_id]["status"] = "done"
             tasks_store[task_id]["transcription"] = formatted_text
             tasks_store[task_id]["claude_usage"] = {
                 "input_tokens": inp_tok,
@@ -698,6 +697,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                         "kept_minutes": chunk_result.get("kept_minutes", cut_min_val),
                         "suggestion_minutes": chunk_result.get("suggestion_minutes", cut_min_val),
                     }
+
+        tasks_store[task_id]["status"] = "done"
 
     except asyncio.TimeoutError:
         logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
