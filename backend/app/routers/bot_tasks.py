@@ -935,122 +935,132 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
                         task_id, len(chunks), bool(chunk_result))
 
-            if chunks:
-                tasks_store[task_id]["stage"] = "cutting_video"
-                logger.info("[CUT] %s: starting video cut", task_id)
+            # Если нет chunks из анализа — нарезка по равным интервалам
+            if not chunks:
+                duration_sec = cut_min_val * 60
+                chunks = [
+                    {"start_time": f"{(i * cut_min_val) // 60:02d}:{(i * cut_min_val) % 60:02d}:00",
+                     "end_time":   f"{((i+1) * cut_min_val) // 60:02d}:{((i+1) * cut_min_val) % 60:02d}:00",
+                     "include": True}
+                    for i in range(3)
+                ]
+                logger.info("[CUT] %s: equal-interval fallback chunks (%d min each)", task_id, cut_min_val)
 
-                video_path = f"/tmp/{task_id}.mp4"
+            tasks_store[task_id]["stage"] = "cutting_video"
+            logger.info("[CUT] %s: starting video cut", task_id)
 
-                if not os.path.exists(video_path):
-                    logger.info("[CUT] %s: downloading video for cutting...", task_id)
-                    video_path = None
+            video_path = f"/tmp/{task_id}.mp4"
 
-                    # Level 0: cobalt.tools (обходит YouTube IP-блокировки)
-                    is_youtube_cut = "youtube.com" in url or "youtu.be" in url
-                    logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
-                                task_id, is_youtube_cut, url[:60])
-                    if is_youtube_cut:
-                        logger.info("[CUT] %s: trying cobalt...", task_id)
-                        try:
-                            cobalt_path = await asyncio.to_thread(
-                                _download_video_cobalt,
-                                tasks_store[task_id].get("url", url),
-                                task_id
-                            )
-                            if cobalt_path and os.path.exists(cobalt_path):
-                                video_path = cobalt_path
-                                logger.info("[CUT] %s: cobalt.tools success", task_id)
-                            else:
-                                logger.warning("[CUT] %s: cobalt returned no file", task_id)
-                        except Exception as e_c:
-                            logger.error("[CUT] %s: cobalt exception: %s", task_id,
-                                         traceback.format_exc())
+            if not os.path.exists(video_path):
+                logger.info("[CUT] %s: downloading video for cutting...", task_id)
+                video_path = None
 
-                    # Level 1: RapidAPI (если cobalt не дал файл)
-                    if not video_path and is_youtube_cut:
-                        logger.info("[CUT] %s: trying rapidapi...", task_id)
-                        try:
-                            video_path = await asyncio.to_thread(
-                                _download_video_rapidapi,
-                                tasks_store[task_id].get("url", url),
-                                task_id
-                            )
-                            if video_path:
-                                logger.info("[CUT] %s: RapidAPI success", task_id)
-                            else:
-                                logger.warning("[CUT] %s: RapidAPI returned no file", task_id)
-                        except Exception as e_r:
-                            logger.error("[CUT] %s: RapidAPI exception: %s", task_id,
-                                         traceback.format_exc())
-
-                    # Level 2: yt-dlp (для не-YouTube или если cobalt/RapidAPI не сработали)
-                    if not video_path:
-                        logger.info("[CUT] %s: trying yt-dlp...", task_id)
-                        try:
-                            cookies_file_v = _get_cookie_file()
-                            await asyncio.wait_for(
-                                asyncio.to_thread(
-                                    _download_with_ytdlp,
-                                    tasks_store[task_id].get("url", url),
-                                    task_id + "_video",
-                                    cookies_file_v,
-                                    True
-                                ),
-                                timeout=DOWNLOAD_TIMEOUT
-                            )
-                            import glob as _glob
-                            video_files = _glob.glob(f"/tmp/{task_id}_video.*")
-                            if video_files:
-                                video_path = video_files[0]
-                                logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
-                            else:
-                                logger.warning("[CUT] %s: yt-dlp returned no file", task_id)
-                        except Exception as e_v:
-                            logger.error("[CUT] %s: yt-dlp exception: %s", task_id,
-                                         traceback.format_exc())
-
-                    logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
-                    if not video_path:
-                        logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
-
-                # Конвертировать в MP4 если нужно
-                if video_path and not video_path.endswith(".mp4"):
-                    logger.info("[CUT] %s: converting to MP4...", task_id)
-                    mp4_path = f"/tmp/{task_id}_video.mp4"
+                # Level 0: cobalt.tools (обходит YouTube IP-блокировки)
+                is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
+                            task_id, is_youtube_cut, url[:60])
+                if is_youtube_cut:
+                    logger.info("[CUT] %s: trying cobalt...", task_id)
                     try:
-                        import subprocess as _sp
-                        result = _sp.run([
-                            "ffmpeg", "-y", "-i", video_path,
-                            "-c:v", "libx264", "-preset", "fast", "-crf", "28",
-                            "-c:a", "aac", "-b:a", "128k",
-                            mp4_path
-                        ], capture_output=True, text=True, timeout=300)
-                        if result.returncode == 0:
-                            os.remove(video_path)
-                            video_path = mp4_path
-                            logger.info("[CUT] %s: converted to MP4", task_id)
+                        cobalt_path = await asyncio.to_thread(
+                            _download_video_cobalt,
+                            tasks_store[task_id].get("url", url),
+                            task_id
+                        )
+                        if cobalt_path and os.path.exists(cobalt_path):
+                            video_path = cobalt_path
+                            logger.info("[CUT] %s: cobalt.tools success", task_id)
                         else:
-                            logger.warning("[CUT] %s: MP4 conversion failed, using original", task_id)
-                    except Exception as e_conv:
-                        logger.warning("[CUT] %s: conversion error: %s", task_id, e_conv)
+                            logger.warning("[CUT] %s: cobalt returned no file", task_id)
+                    except Exception as e_c:
+                        logger.error("[CUT] %s: cobalt exception: %s", task_id,
+                                     traceback.format_exc())
 
-                if video_path and os.path.exists(video_path):
-                    output_video = f"/tmp/{task_id}_cut.mp4"
-                    success = await asyncio.to_thread(
-                        cut_video_with_ffmpeg,
-                        video_path,
-                        chunks,
-                        output_video,
-                        task_id
-                    )
-                    if success:
-                        tasks_store[task_id]["output_video_path"] = output_video
-                        logger.info("[CUT] %s: video ready at %s", task_id, output_video)
+                # Level 1: RapidAPI (если cobalt не дал файл)
+                if not video_path and is_youtube_cut:
+                    logger.info("[CUT] %s: trying rapidapi...", task_id)
+                    try:
+                        video_path = await asyncio.to_thread(
+                            _download_video_rapidapi,
+                            tasks_store[task_id].get("url", url),
+                            task_id
+                        )
+                        if video_path:
+                            logger.info("[CUT] %s: RapidAPI success", task_id)
+                        else:
+                            logger.warning("[CUT] %s: RapidAPI returned no file", task_id)
+                    except Exception as e_r:
+                        logger.error("[CUT] %s: RapidAPI exception: %s", task_id,
+                                     traceback.format_exc())
+
+                # Level 2: yt-dlp (для не-YouTube или если cobalt/RapidAPI не сработали)
+                if not video_path:
+                    logger.info("[CUT] %s: trying yt-dlp...", task_id)
+                    try:
+                        cookies_file_v = _get_cookie_file()
+                        await asyncio.wait_for(
+                            asyncio.to_thread(
+                                _download_with_ytdlp,
+                                tasks_store[task_id].get("url", url),
+                                task_id + "_video",
+                                cookies_file_v,
+                                True
+                            ),
+                            timeout=DOWNLOAD_TIMEOUT
+                        )
+                        import glob as _glob
+                        video_files = _glob.glob(f"/tmp/{task_id}_video.*")
+                        if video_files:
+                            video_path = video_files[0]
+                            logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
+                        else:
+                            logger.warning("[CUT] %s: yt-dlp returned no file", task_id)
+                    except Exception as e_v:
+                        logger.error("[CUT] %s: yt-dlp exception: %s", task_id,
+                                     traceback.format_exc())
+
+                logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
+                if not video_path:
+                    logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
+
+            # Конвертировать в MP4 если нужно
+            if video_path and not video_path.endswith(".mp4"):
+                logger.info("[CUT] %s: converting to MP4...", task_id)
+                mp4_path = f"/tmp/{task_id}_video.mp4"
+                try:
+                    import subprocess as _sp
+                    result = _sp.run([
+                        "ffmpeg", "-y", "-i", video_path,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+                        "-c:a", "aac", "-b:a", "128k",
+                        mp4_path
+                    ], capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0:
+                        os.remove(video_path)
+                        video_path = mp4_path
+                        logger.info("[CUT] %s: converted to MP4", task_id)
                     else:
-                        logger.error("[CUT] %s: video cutting failed", task_id)
+                        logger.warning("[CUT] %s: MP4 conversion failed, using original", task_id)
+                except Exception as e_conv:
+                    logger.warning("[CUT] %s: conversion error: %s", task_id, e_conv)
 
-                    try: os.remove(video_path)
-                    except: pass
+            if video_path and os.path.exists(video_path):
+                output_video = f"/tmp/{task_id}_cut.mp4"
+                success = await asyncio.to_thread(
+                    cut_video_with_ffmpeg,
+                    video_path,
+                    chunks,
+                    output_video,
+                    task_id
+                )
+                if success:
+                    tasks_store[task_id]["output_video_path"] = output_video
+                    logger.info("[CUT] %s: video ready at %s", task_id, output_video)
+                else:
+                    logger.error("[CUT] %s: video cutting failed", task_id)
+
+                try: os.remove(video_path)
+                except: pass
 
         tasks_store[task_id]["status"] = "done"
 
