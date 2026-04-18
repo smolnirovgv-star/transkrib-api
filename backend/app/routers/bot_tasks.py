@@ -192,6 +192,88 @@ def analyze_chunks_with_claude(
         return {"error": str(e)}
 
 
+def cut_video_with_ffmpeg(
+    video_path: str,
+    chunks: list,
+    output_path: str,
+    task_id: str
+) -> bool:
+    """Нарезает видео по чанкам с include=True и склеивает в один файл."""
+    import subprocess, os as _os
+
+    included = [c for c in chunks if c.get("include", True)]
+    if not included:
+        logger.error("[CUT] %s: no chunks with include=True", task_id)
+        return False
+
+    logger.info("[CUT] %s: cutting %d/%d chunks", task_id, len(included), len(chunks))
+
+    segment_paths = []
+    concat_list_path = f"/tmp/{task_id}_concat.txt"
+
+    try:
+        for i, chunk in enumerate(included):
+            start = chunk.get("start_time", "00:00:00")
+            end = chunk.get("end_time", "00:00:00")
+            seg_path = f"/tmp/{task_id}_seg{i}.mp4"
+
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-ss", start,
+                "-to", end,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+                "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "1",
+                seg_path
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                logger.error("[CUT] ffmpeg seg %d failed: %s", i, result.stderr[-200:])
+                continue
+
+            if _os.path.exists(seg_path) and _os.path.getsize(seg_path) > 0:
+                segment_paths.append(seg_path)
+                logger.info("[CUT] seg %d: %s->%s (%.1f MB)", i, start, end,
+                    _os.path.getsize(seg_path) / 1024 / 1024)
+
+        if not segment_paths:
+            logger.error("[CUT] %s: no segments created", task_id)
+            return False
+
+        with open(concat_list_path, "w") as f:
+            for sp in segment_paths:
+                f.write("file '" + sp + "'" + chr(10))
+
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", concat_list_path,
+            "-c", "copy",
+            output_path
+        ]
+        result = subprocess.run(cmd_concat, capture_output=True, text=True, timeout=120)
+
+        if result.returncode != 0:
+            logger.error("[CUT] concat failed: %s", result.stderr[-200:])
+            return False
+
+        final_size = _os.path.getsize(output_path) / 1024 / 1024
+        logger.info("[CUT] %s: done -> %s (%.1f MB)", task_id, output_path, final_size)
+        return True
+
+    except Exception as e:
+        logger.error("[CUT] %s: exception: %s", task_id, e)
+        return False
+    finally:
+        for sp in segment_paths:
+            try: _os.remove(sp)
+            except: pass
+        try: _os.remove(concat_list_path)
+        except: pass
+
+
 class TaskCreate(BaseModel):
     url: str
     cut_minutes: Optional[str] = None
@@ -308,8 +390,8 @@ def _get_cookie_file() -> Optional[str]:
         return None
 
 
-def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None):
-    """Level 1: yt-dlp with Chrome User-Agent and full error logging."""
+def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = None, video_needed: bool = False):
+    """Level 1: yt-dlp download. video_needed=True скачивает видео+аудио для нарезки."""
     import glob
     import yt_dlp
     print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
@@ -317,30 +399,43 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     output_template = "/tmp/" + task_id + ".%(ext)s"
 
-    ydl_opts = {
-        "format": "worstaudio/bestaudio/best",
-        "outtmpl": output_template,
-        "quiet": False,
-        "no_warnings": False,
-        "extract_flat": False,
-        "retries": 3,
-        "throttledratelimit": 0,
-        "socket_timeout": 30,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        },
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": "192",
-        }],
-    }
+    if video_needed:
+        ydl_opts = {
+            "format": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]/best",
+            "outtmpl": output_template,
+            "quiet": False,
+            "merge_output_format": "mp4",
+            "retries": 3,
+            "socket_timeout": 30,
+            "http_headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+        }
+    else:
+        ydl_opts = {
+            "format": "worstaudio/bestaudio/best",
+            "outtmpl": output_template,
+            "quiet": False,
+            "no_warnings": False,
+            "extract_flat": False,
+            "retries": 3,
+            "throttledratelimit": 0,
+            "socket_timeout": 30,
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/131.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }],
+        }
 
     if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
@@ -698,6 +793,57 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                         "suggestion_minutes": chunk_result.get("suggestion_minutes", cut_min_val),
                     }
 
+        # === VIDEO CUTTING ===
+        if cut_min_val > 0 and tasks_store[task_id].get("chunk_analysis"):
+            chunk_result = tasks_store[task_id]["chunk_analysis"]
+            chunks = chunk_result.get("chunks", [])
+
+            if chunks:
+                tasks_store[task_id]["stage"] = "cutting_video"
+                logger.info("[CUT] %s: starting video cut", task_id)
+
+                video_path = f"/tmp/{task_id}.mp4"
+
+                if not os.path.exists(video_path):
+                    logger.info("[CUT] %s: downloading video for cutting...", task_id)
+                    try:
+                        cookies_file_v = _get_cookie_file()
+                        await asyncio.wait_for(
+                            asyncio.to_thread(
+                                _download_with_ytdlp,
+                                tasks_store[task_id].get("url", url),
+                                task_id + "_video",
+                                cookies_file_v,
+                                True
+                            ),
+                            timeout=DOWNLOAD_TIMEOUT
+                        )
+                        import glob as _glob
+                        video_files = _glob.glob(f"/tmp/{task_id}_video.*")
+                        if video_files:
+                            video_path = video_files[0]
+                    except Exception as e_v:
+                        logger.error("[CUT] %s: video download failed: %s", task_id, e_v)
+                        video_path = None
+
+                if video_path and os.path.exists(video_path):
+                    output_video = f"/tmp/{task_id}_cut.mp4"
+                    success = await asyncio.to_thread(
+                        cut_video_with_ffmpeg,
+                        video_path,
+                        chunks,
+                        output_video,
+                        task_id
+                    )
+                    if success:
+                        tasks_store[task_id]["output_video_path"] = output_video
+                        logger.info("[CUT] %s: video ready at %s", task_id, output_video)
+                    else:
+                        logger.error("[CUT] %s: video cutting failed", task_id)
+
+                    try: os.remove(video_path)
+                    except: pass
+
         tasks_store[task_id]["status"] = "done"
 
     except asyncio.TimeoutError:
@@ -745,6 +891,23 @@ async def cancel_task(task_id: str):
         tasks_store[task_id]["status"] = "cancelled"
         return {"ok": True}
     return {"ok": False}
+
+@router.get("/api/tasks/{task_id}/video")
+async def download_video(task_id: str):
+    """Скачать нарезанное видео."""
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    if task_id not in tasks_store:
+        raise HTTPException(404, "Task not found")
+    video_path = tasks_store[task_id].get("output_video_path")
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(404, "Video not ready")
+    return FileResponse(
+        video_path,
+        media_type="video/mp4",
+        filename=f"transkrib_{task_id[:8]}.mp4"
+    )
+
 
 @router.get("/api/debug/logs")
 async def get_debug_logs(n: int = 100):
