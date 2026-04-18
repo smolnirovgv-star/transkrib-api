@@ -878,7 +878,6 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Step 3: Format with Claude (skip for SRT - return raw timestamps)
         if output_format == "srt":
             logger.info("[bot_tasks] %s: SRT format - skipping Claude, returning raw SRT", task_id)
-            tasks_store[task_id]["status"] = "done"
             tasks_store[task_id]["transcription"] = raw_text
         else:
             tasks_store[task_id]["stage"] = "formatting"
@@ -929,6 +928,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         logger.info("[CUT_ENTRY] task=%s cut_min_val=%d fmt=%r output_format=%r",
                     task_id, cut_min_val, fmt, output_format)
         if cut_min_val > 0:
+            tasks_store[task_id]["status"] = "cutting"
+            tasks_store[task_id]["progress"] = 4
             chunk_result = tasks_store[task_id].get("chunk_analysis", {})
             chunks = chunk_result.get("chunks", [])
             logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
