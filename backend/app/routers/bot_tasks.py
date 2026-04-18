@@ -405,6 +405,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
+            "postprocessors": [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}],
             "retries": 3,
             "socket_timeout": 30,
             "http_headers": {
