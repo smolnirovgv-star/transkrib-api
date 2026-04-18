@@ -546,15 +546,25 @@ def _download_video_cobalt(url: str, task_id: str):
         return None
 
     try:
-        with requests.get(direct_url, stream=True, timeout=300,
-                          headers={"User-Agent": "Mozilla/5.0"}) as r:
+        dl_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://cobalt.tools/",
+            "Accept": "*/*",
+        }
+        with requests.get(direct_url, stream=True, timeout=300, headers=dl_headers) as r:
             if r.status_code != 200:
                 logger.error("[COBALT] download failed: %d", r.status_code)
                 return None
+            total = 0
             with open(output_path, "wb") as f:
-                shutil.copyfileobj(r.raw, f)
-        file_size = os.path.getsize(output_path) / 1024 / 1024
-        logger.info("[COBALT] downloaded %.1f MB -> %s", file_size, output_path)
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        total += len(chunk)
+        logger.info("[COBALT] downloaded %.1f MB", total / 1024 / 1024)
+        if total < 10000:
+            logger.error("[COBALT] file too small: %d bytes", total)
+            return None
         return output_path
     except Exception as e:
         logger.error("[COBALT] download exception: %s", e)
