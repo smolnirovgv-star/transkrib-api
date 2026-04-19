@@ -456,6 +456,16 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
     logger.info("[DOWNLOAD] Output template: %s", output_template)
 
+    # Log available formats before download
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl_info:
+            info_only = ydl_info.extract_info(url, download=False)
+            fmts = info_only.get("formats", []) if info_only else []
+            fmt_summary = [(f.get("format_id"), f.get("ext"), f.get("height")) for f in fmts]
+            logger.info("[DOWNLOAD] Available formats (%d): %s", len(fmt_summary), fmt_summary[:20])
+    except Exception as e_fmt:
+        logger.warning("[DOWNLOAD] Could not list formats: %s", e_fmt)
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
