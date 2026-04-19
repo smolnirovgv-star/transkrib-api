@@ -402,7 +402,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "best[height<=480]/best",
+            "format": "worst",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
@@ -462,8 +462,16 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
             logger.info("[DOWNLOAD] yt-dlp completed. Title: %s", info.get("title", "unknown"))
             logger.info("[DOWNLOAD] Format: %s, Ext: %s", info.get("format", "?"), info.get("ext", "?"))
     except Exception as e:
+        err_str = str(e)
         logger.error("[DOWNLOAD] yt-dlp FAILED: %s: %s", type(e).__name__, e)
-        raise
+        if "format" in err_str.lower() or "not available" in err_str.lower():
+            logger.info("[DOWNLOAD] Retrying without format selector...")
+            ydl_opts_retry = {k: v for k, v in ydl_opts.items() if k != "format"}
+            with yt_dlp.YoutubeDL(ydl_opts_retry) as ydl2:
+                info = ydl2.extract_info(url, download=True)
+                logger.info("[DOWNLOAD] retry completed. Title: %s", info.get("title", "unknown"))
+        else:
+            raise
     finally:
         pass
 
