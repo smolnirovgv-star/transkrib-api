@@ -448,6 +448,9 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     if proxy_url:
         ydl_opts["proxy"] = proxy_url
         logger.info("[DOWNLOAD] Using proxy for video: %s...", proxy_url[:25])
+    ydl_opts["extractor_args"] = {
+        "youtube": {"player_client": ["ios", "web"]}
+    }
 
     logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
     logger.info("[DOWNLOAD] Output template: %s", output_template)
