@@ -649,6 +649,59 @@ def _download_video_rapidapi(url: str, task_id: str):
         return None
 
 
+async def _download_video_savefrom(task_id: str, url: str, output_path: str) -> bool:
+    """Level 2 fallback: SaveFrom.net API"""
+    try:
+        import requests as _req
+        video_id = url.split("v=")[-1].split("&")[0]
+
+        # SaveFrom hidden API
+        api_url = f"https://worker.sf-tools.com/savefrom.net/api/convert"
+        resp = _req.get(api_url,
+            params={"url": url, "lang": "en"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=20
+        )
+        logger.info("[SAVEFROM] status: %s", resp.status_code)
+
+        if resp.status_code != 200:
+            logger.error("[SAVEFROM] error %s", resp.status_code)
+            return False
+
+        data = resp.json()
+        logger.info("[SAVEFROM] response keys: %s", list(data.keys())[:5])
+
+        # Find MP4 download URL
+        mp4_url = None
+        urls = data.get("url", [])
+        if isinstance(urls, list):
+            for item in urls:
+                if "mp4" in item.get("type", "").lower() or "mp4" in item.get("ext", "").lower():
+                    mp4_url = item.get("url") or item.get("link")
+                    break
+        elif isinstance(urls, str):
+            mp4_url = urls
+
+        if not mp4_url:
+            logger.error("[SAVEFROM] no mp4 url found, data: %s", str(data)[:200])
+            return False
+
+        logger.info("[SAVEFROM] got mp4 url, downloading...")
+        vid_resp = _req.get(mp4_url, stream=True, timeout=120,
+            headers={"User-Agent": "Mozilla/5.0"},
+            allow_redirects=True
+        )
+        total = 0
+        with open(output_path, "wb") as f:
+            for chunk in vid_resp.iter_content(chunk_size=65536):
+                f.write(chunk)
+                total += len(chunk)
+        logger.info("[SAVEFROM] downloaded %.1f MB", total/1024/1024)
+        return total > 10000
+    except Exception as e:
+        logger.error("[SAVEFROM] exception: %s", str(e)[:100])
+        return False
+
 def _get_transcript_supadata(url: str) -> str:
     """Get YouTube transcript via Supadata API — works from any IP, no proxy needed."""
     api_key = os.getenv("SUPADATA_API_KEY", "")
@@ -1011,7 +1064,22 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                         logger.error("[CUT] %s: RapidAPI exception: %s", task_id,
                                      traceback.format_exc())
 
-                # Level 2: yt-dlp (для не-YouTube или если cobalt/RapidAPI не сработали)
+                # Level 2: SaveFrom
+                if not video_path:
+                    logger.info("[CUT] %s: trying savefrom...", task_id)
+                    try:
+                        tmp_video = f"/tmp/{task_id}_video.mp4"
+                        ok = await _download_video_savefrom(task_id, tasks_store[task_id].get("url", url), tmp_video)
+                        if ok:
+                            video_path = tmp_video
+                            logger.info("[CUT] %s: savefrom success", task_id)
+                        else:
+                            logger.warning("[CUT] %s: savefrom returned no file", task_id)
+                    except Exception:
+                        logger.error("[CUT] %s: savefrom exception: %s", task_id,
+                                     traceback.format_exc())
+
+                # Level 3: yt-dlp (для не-YouTube или если cobalt/RapidAPI/SaveFrom не сработали)
                 if not video_path:
                     logger.info("[CUT] %s: trying yt-dlp...", task_id)
                     try:
