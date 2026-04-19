@@ -5,20 +5,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir yt-dlp
-
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements.railway.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Pre-download Whisper model at build time
-RUN python -c "import whisper; whisper.load_model('small')"
+RUN pip install --no-cache-dir yt-dlp
 
 COPY . .
 
-RUN mkdir -p /app/storage/uploads /app/storage/processing /app/storage/results /app/storage/logs
+RUN mkdir -p /tmp/uploads /tmp/processing
 
 EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
