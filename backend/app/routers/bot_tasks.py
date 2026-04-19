@@ -402,7 +402,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
+            "format": "best[height<=480]/best",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
@@ -451,6 +451,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     ydl_opts["extractor_args"] = {
         "youtube": {"player_client": ["ios", "web"]}
     }
+    logger.info("[DOWNLOAD] Using format: %s", ydl_opts.get("format"))
 
     logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
     logger.info("[DOWNLOAD] Output template: %s", output_template)
