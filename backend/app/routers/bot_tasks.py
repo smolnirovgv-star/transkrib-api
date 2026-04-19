@@ -710,6 +710,64 @@ async def _download_video_savefrom(task_id: str, url: str, output_path: str) -> 
         logger.error("[SAVEFROM] exception: %s", str(e)[:100])
         return False
 
+
+
+async def _download_video_turboscribe(task_id: str, url: str, output_path: str) -> bool:
+    """Level 2b fallback: TurboScribe internal API"""
+    try:
+        import requests as _req
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Content-Type": "application/json",
+        }
+        # Attempt 1: _invoke endpoint
+        resp = _req.post(
+            "https://turboscribe.ai/_invoke/json",
+            json={"event": "url_submitted", "data": {"url": url}},
+            headers=headers,
+            timeout=30
+        )
+        logger.info("[TURBOSCRIBE] _invoke status: %s", resp.status_code)
+        mp4_url = None
+        if resp.status_code == 200:
+            data = resp.json()
+            logger.info("[TURBOSCRIBE] _invoke response: %s", str(data)[:200])
+            mp4_url = (data.get("url") or data.get("download_url") or
+                       data.get("link") or data.get("video_url"))
+        if not mp4_url:
+            # Attempt 2: _htmx endpoint
+            resp2 = _req.post(
+                "https://turboscribe.ai/_htmx/NCN20gAEkZMBzQPXkQc",
+                data={"url": url},
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                timeout=30
+            )
+            logger.info("[TURBOSCRIBE] _htmx status: %s", resp2.status_code)
+            logger.info("[TURBOSCRIBE] _htmx response: %s", resp2.text[:200])
+            if resp2.status_code == 200:
+                import re as _re
+                m = _re.search(r'https?://\S+\.mp4', resp2.text)
+                if m:
+                    mp4_url = m.group(0)
+        if not mp4_url:
+            logger.error("[TURBOSCRIBE] no mp4 url found")
+            return False
+        logger.info("[TURBOSCRIBE] got mp4 url, downloading...")
+        vid_resp = _req.get(mp4_url, stream=True, timeout=120,
+            headers={"User-Agent": "Mozilla/5.0"},
+            allow_redirects=True
+        )
+        total = 0
+        with open(output_path, "wb") as f:
+            for chunk in vid_resp.iter_content(chunk_size=65536):
+                f.write(chunk)
+                total += len(chunk)
+        logger.info("[TURBOSCRIBE] downloaded %.1f MB", total/1024/1024)
+        return total > 10000
+    except Exception as e:
+        logger.error("[TURBOSCRIBE] exception: %s", str(e)[:100])
+        return False
+
 def _get_transcript_supadata(url: str) -> str:
     """Get YouTube transcript via Supadata API — works from any IP, no proxy needed."""
     api_key = os.getenv("SUPADATA_API_KEY", "")
@@ -1087,7 +1145,22 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                         logger.error("[CUT] %s: savefrom exception: %s", task_id,
                                      traceback.format_exc())
 
-                # Level 3: yt-dlp (для не-YouTube или если cobalt/RapidAPI/SaveFrom не сработали)
+                # Level 2b: TurboScribe
+                if not video_path:
+                    logger.info("[CUT] %s: trying turboscribe...", task_id)
+                    try:
+                        tmp_video = f"/tmp/{task_id}_video.mp4"
+                        ok = await _download_video_turboscribe(task_id, tasks_store[task_id].get("url", url), tmp_video)
+                        if ok:
+                            video_path = tmp_video
+                            logger.info("[CUT] %s: turboscribe success", task_id)
+                        else:
+                            logger.warning("[CUT] %s: turboscribe returned no file", task_id)
+                    except Exception:
+                        logger.error("[CUT] %s: turboscribe exception: %s", task_id,
+                                     traceback.format_exc())
+
+                # Level 3: yt-dlp (для не-YouTube или если все fallback не сработали)
                 if not video_path:
                     logger.info("[CUT] %s: trying yt-dlp...", task_id)
                     try:
