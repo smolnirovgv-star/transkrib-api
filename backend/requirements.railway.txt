@@ -13,3 +13,4 @@ python-dotenv==1.0.1
 aiofiles==24.1.0
 youtube-transcript-api
 groq
+ffmpeg-python
