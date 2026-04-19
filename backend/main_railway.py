@@ -17,6 +17,8 @@ logger = logging.getLogger("transkrib")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Transkrib API (Railway) starting...")
+    logger.info("Python path: %s", os.environ.get("PYTHONPATH", "not set"))
+    logger.info("PORT: %s", os.environ.get("PORT", "not set"))
     yield
     logger.info("Transkrib API shutting down")
 
@@ -31,10 +33,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.routers.bot_tasks import router as bot_router
-app.include_router(bot_router)
+try:
+    from app.routers.bot_tasks import router as bot_router
+    app.include_router(bot_router)
+    logger.info("bot_tasks router loaded OK")
+except Exception as e:
+    logger.error("FAILED to load bot_tasks router: %s", e, exc_info=True)
+    raise
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "transkrib-api"}
