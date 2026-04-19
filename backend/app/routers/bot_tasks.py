@@ -402,7 +402,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]/best",
+            "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
