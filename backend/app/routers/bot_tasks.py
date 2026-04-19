@@ -674,6 +674,67 @@ def _download_video_rapidapi(url: str, task_id: str):
         return None
 
 
+async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
+    """
+    Tries to download a YouTube video via fallback chain.
+    Returns {"ok": True, "method": "ytdlp|cobalt|rapidapi", "path": out_path}
+    or {"ok": False, "error": "..."} if all levels fail.
+    """
+    import glob as _glob
+    errors = []
+
+    # Level 0: yt-dlp (with Webshare proxy + cookies)
+    try:
+        logger.info("download_youtube: trying yt-dlp")
+        cookies_file_v = _get_cookie_file()
+        tmp_id = task_id + "_ytdl"
+        await asyncio.wait_for(
+            asyncio.to_thread(_download_with_ytdlp, url, tmp_id, cookies_file_v, True),
+            timeout=DOWNLOAD_TIMEOUT
+        )
+        video_files = _glob.glob(f"/tmp/{tmp_id}.*")
+        if video_files:
+            import shutil as _shutil
+            _shutil.move(video_files[0], out_path)
+            logger.info("download_youtube: yt-dlp OK")
+            return {"ok": True, "method": "ytdlp", "path": out_path}
+        errors.append("ytdlp: no file produced")
+    except Exception as e:
+        logger.warning("download_youtube: yt-dlp failed: %r", e)
+        errors.append(f"ytdlp: {e}")
+
+    # Level 1: cobalt.tools
+    try:
+        logger.info("download_youtube: trying cobalt")
+        cobalt_path = await asyncio.to_thread(_download_video_cobalt, url, task_id)
+        if cobalt_path and os.path.exists(cobalt_path):
+            if cobalt_path != out_path:
+                import shutil as _shutil
+                _shutil.move(cobalt_path, out_path)
+            logger.info("download_youtube: cobalt OK")
+            return {"ok": True, "method": "cobalt", "path": out_path}
+        errors.append("cobalt: no file returned")
+    except Exception as e:
+        logger.warning("download_youtube: cobalt failed: %r", e)
+        errors.append(f"cobalt: {e}")
+
+    # Level 2: RapidAPI
+    try:
+        logger.info("download_youtube: trying rapidapi")
+        rapidapi_path = await asyncio.to_thread(_download_video_rapidapi, url, task_id)
+        if rapidapi_path and os.path.exists(rapidapi_path):
+            if rapidapi_path != out_path:
+                import shutil as _shutil
+                _shutil.move(rapidapi_path, out_path)
+            logger.info("download_youtube: rapidapi OK")
+            return {"ok": True, "method": "rapidapi", "path": out_path}
+        errors.append("rapidapi: no file returned")
+    except Exception as e:
+        logger.warning("download_youtube: rapidapi failed: %r", e)
+        errors.append(f"rapidapi: {e}")
+
+    return {"ok": False, "error": " | ".join(errors)}
+
 async def _download_video_savefrom(task_id: str, url: str, output_path: str) -> bool:
     """Level 2 fallback: SaveFrom.net API"""
     try:
@@ -1175,77 +1236,24 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.info("[CUT] %s: downloading video for cutting...", task_id)
                 video_path = None
 
-                # Level 0: cobalt.tools (обходит YouTube IP-блокировки)
                 is_youtube_cut = "youtube.com" in url or "youtu.be" in url
                 logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
                             task_id, is_youtube_cut, url[:60])
+
                 if is_youtube_cut:
-                    logger.info("[CUT] %s: trying cobalt...", task_id)
-                    try:
-                        cobalt_path = await asyncio.to_thread(
-                            _download_video_cobalt,
-                            tasks_store[task_id].get("url", url),
-                            task_id
-                        )
-                        if cobalt_path and os.path.exists(cobalt_path):
-                            video_path = cobalt_path
-                            logger.info("[CUT] %s: cobalt.tools success", task_id)
-                        else:
-                            logger.warning("[CUT] %s: cobalt returned no file", task_id)
-                    except Exception as e_c:
-                        logger.error("[CUT] %s: cobalt exception: %s", task_id,
-                                     traceback.format_exc())
-
-                # Level 1: RapidAPI (если cobalt не дал файл)
-                if not video_path and is_youtube_cut:
-                    logger.info("[CUT] %s: trying rapidapi...", task_id)
-                    try:
-                        video_path = await asyncio.to_thread(
-                            _download_video_rapidapi,
-                            tasks_store[task_id].get("url", url),
-                            task_id
-                        )
-                        if video_path:
-                            logger.info("[CUT] %s: RapidAPI success", task_id)
-                        else:
-                            logger.warning("[CUT] %s: RapidAPI returned no file", task_id)
-                    except Exception as e_r:
-                        logger.error("[CUT] %s: RapidAPI exception: %s", task_id,
-                                     traceback.format_exc())
-
-                # Level 2: SaveFrom
-                if not video_path:
-                    logger.info("[CUT] %s: trying savefrom...", task_id)
-                    try:
-                        tmp_video = f"/tmp/{task_id}_video.mp4"
-                        ok = await _download_video_savefrom(task_id, tasks_store[task_id].get("url", url), tmp_video)
-                        if ok:
-                            video_path = tmp_video
-                            logger.info("[CUT] %s: savefrom success", task_id)
-                        else:
-                            logger.warning("[CUT] %s: savefrom returned no file", task_id)
-                    except Exception:
-                        logger.error("[CUT] %s: savefrom exception: %s", task_id,
-                                     traceback.format_exc())
-
-                # Level 2b: TurboScribe
-                if not video_path:
-                    logger.info("[CUT] %s: trying turboscribe...", task_id)
-                    try:
-                        tmp_video = f"/tmp/{task_id}_video.mp4"
-                        ok = await _download_video_turboscribe(task_id, tasks_store[task_id].get("url", url), tmp_video)
-                        if ok:
-                            video_path = tmp_video
-                            logger.info("[CUT] %s: turboscribe success", task_id)
-                        else:
-                            logger.warning("[CUT] %s: turboscribe returned no file", task_id)
-                    except Exception:
-                        logger.error("[CUT] %s: turboscribe exception: %s", task_id,
-                                     traceback.format_exc())
-
-                # Level 3: yt-dlp (для не-YouTube или если все fallback не сработали)
-                if not video_path:
-                    logger.info("[CUT] %s: trying yt-dlp...", task_id)
+                    tmp_video = f"/tmp/{task_id}.mp4"
+                    dl_result = await download_youtube(
+                        tasks_store[task_id].get("url", url), task_id, tmp_video
+                    )
+                    if dl_result["ok"]:
+                        video_path = tmp_video
+                        logger.info("[CUT] %s: downloaded via %s", task_id, dl_result["method"])
+                    else:
+                        logger.error("[CUT] %s: all YouTube download methods failed: %s",
+                                     task_id, dl_result["error"])
+                else:
+                    # Non-YouTube (Rutube, VK etc.): yt-dlp only
+                    logger.info("[CUT] %s: trying yt-dlp for non-YouTube...", task_id)
                     try:
                         cookies_file_v = _get_cookie_file()
                         await asyncio.wait_for(
