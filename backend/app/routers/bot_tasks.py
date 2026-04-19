@@ -713,48 +713,48 @@ async def _download_video_savefrom(task_id: str, url: str, output_path: str) -> 
 
 
 async def _download_video_turboscribe(task_id: str, url: str, output_path: str) -> bool:
-    """Level 2b fallback: TurboScribe internal API"""
+    """Level 2b fallback: TurboScribe downloader page"""
     try:
         import requests as _req
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Content-Type": "application/json",
-        }
-        # Attempt 1: _invoke endpoint
-        resp = _req.post(
-            "https://turboscribe.ai/_invoke/json",
-            json={"event": "url_submitted", "data": {"url": url}},
-            headers=headers,
+        import re as _re
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        # Step 1: GET downloader page, find dynamic htmx endpoint
+        page_resp = _req.get(
+            "https://turboscribe.ai/downloader/youtube/mp4",
+            headers={"User-Agent": ua},
+            timeout=20
+        )
+        logger.info("[TURBOSCRIBE] page status: %s", page_resp.status_code)
+        if page_resp.status_code != 200:
+            logger.error("[TURBOSCRIBE] page load failed: %s", page_resp.status_code)
+            return False
+        m_form = _re.search(r'hx-post="(/_htmx/[^"]+)"', page_resp.text)
+        if not m_form:
+            logger.error("[TURBOSCRIBE] htmx endpoint not found in page")
+            return False
+        htmx_path = m_form.group(1)
+        logger.info("[TURBOSCRIBE] htmx endpoint: %s", htmx_path)
+        # Step 2: POST to dynamic endpoint
+        resp2 = _req.post(
+            f"https://turboscribe.ai{htmx_path}",
+            data={"url": url},
+            headers={"User-Agent": ua},
             timeout=30
         )
-        logger.info("[TURBOSCRIBE] _invoke status: %s", resp.status_code)
+        logger.info("[TURBOSCRIBE] htmx status: %s", resp2.status_code)
+        logger.info("[TURBOSCRIBE] htmx response: %s", resp2.text[:300])
+        # Step 3: find googlevideo / videoplayback URL
         mp4_url = None
-        if resp.status_code == 200:
-            data = resp.json()
-            logger.info("[TURBOSCRIBE] _invoke response: %s", str(data)[:200])
-            mp4_url = (data.get("url") or data.get("download_url") or
-                       data.get("link") or data.get("video_url"))
+        if resp2.status_code == 200:
+            m_url = _re.search(r'href="(https?://[^"]*(?:googlevideo|videoplayback)[^"]*)"', resp2.text)
+            if m_url:
+                mp4_url = m_url.group(1)
         if not mp4_url:
-            # Attempt 2: _htmx endpoint
-            resp2 = _req.post(
-                "https://turboscribe.ai/_htmx/NCN20gAEkZMBzQPXkQc",
-                data={"url": url},
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-                timeout=30
-            )
-            logger.info("[TURBOSCRIBE] _htmx status: %s", resp2.status_code)
-            logger.info("[TURBOSCRIBE] _htmx response: %s", resp2.text[:200])
-            if resp2.status_code == 200:
-                import re as _re
-                m = _re.search(r'https?://\S+\.mp4', resp2.text)
-                if m:
-                    mp4_url = m.group(0)
-        if not mp4_url:
-            logger.error("[TURBOSCRIBE] no mp4 url found")
+            logger.error("[TURBOSCRIBE] no video url found")
             return False
-        logger.info("[TURBOSCRIBE] got mp4 url, downloading...")
+        logger.info("[TURBOSCRIBE] got video url, downloading...")
         vid_resp = _req.get(mp4_url, stream=True, timeout=120,
-            headers={"User-Agent": "Mozilla/5.0"},
+            headers={"User-Agent": ua},
             allow_redirects=True
         )
         total = 0
