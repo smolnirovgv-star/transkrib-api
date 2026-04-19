@@ -471,7 +471,14 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
                 info = ydl2.extract_info(url, download=True)
                 logger.info("[DOWNLOAD] retry completed. Title: %s", info.get("title", "unknown"))
         else:
-            raise
+            logger.info("[DOWNLOAD] Retrying with OAuth2 (no proxy, no cookies)...")
+            ydl_opts_oauth = {k: v for k, v in ydl_opts.items()
+                              if k not in ("cookiefile", "proxy")}
+            ydl_opts_oauth["username"] = "oauth2"
+            ydl_opts_oauth["password"] = ""
+            with yt_dlp.YoutubeDL(ydl_opts_oauth) as ydl_oauth:
+                info = ydl_oauth.extract_info(url, download=True)
+                logger.info("[DOWNLOAD] oauth2 retry completed. Title: %s", info.get("title", "unknown"))
     finally:
         pass
 
