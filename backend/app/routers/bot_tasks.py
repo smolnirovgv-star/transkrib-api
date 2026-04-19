@@ -947,16 +947,82 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             cookies_file = _get_cookie_file()
             logger.info("[bot_tasks] %s: cookies=%s", task_id, "yes" if cookies_file else "no")
 
-            # Level 1: yt-dlp
+            download_result = None
+            ytdlp_error = None
+
+            # Level 1: yt-dlp (всегда пробуем первым — быстрее для Rutube/VK)
             try:
                 download_result = await asyncio.wait_for(
                     asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
                     timeout=DOWNLOAD_TIMEOUT,
                 )
+                logger.info("[bot_tasks] %s: yt-dlp OK", task_id)
             except Exception as e1:
-                logger.error("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
-                print(f"[bot_tasks] {task_id}: yt-dlp failed: {e1}")
-                raise
+                ytdlp_error = e1
+                logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                tasks_store[task_id]["debug_log"] = f"yt-dlp FAILED: {str(e1)[:200]}"
+
+            # Level 2+3: cobalt → rapidapi (только для YouTube, если yt-dlp упал)
+            if not download_result and is_youtube:
+                mp4_path = None
+                audio_path = f"/tmp/{task_id}.mp3"
+
+                # Level 2: cobalt.tools
+                logger.info("[bot_tasks] %s: trying cobalt.tools fallback...", task_id)
+                tasks_store[task_id]["debug_log"] = "trying cobalt..."
+                try:
+                    mp4_path = await asyncio.to_thread(_download_video_cobalt, url, task_id)
+                    if mp4_path and os.path.exists(mp4_path):
+                        logger.info("[bot_tasks] %s: cobalt OK: %s", task_id, mp4_path)
+                    else:
+                        mp4_path = None
+                except Exception as e_c:
+                    logger.warning("[bot_tasks] %s: cobalt exception: %s", task_id, e_c)
+
+                # Level 3: RapidAPI
+                if not mp4_path:
+                    logger.info("[bot_tasks] %s: trying rapidapi fallback...", task_id)
+                    tasks_store[task_id]["debug_log"] = "trying rapidapi..."
+                    try:
+                        mp4_path = await asyncio.to_thread(_download_video_rapidapi, url, task_id)
+                        if mp4_path and os.path.exists(mp4_path):
+                            logger.info("[bot_tasks] %s: rapidapi OK: %s", task_id, mp4_path)
+                        else:
+                            mp4_path = None
+                    except Exception as e_r:
+                        logger.warning("[bot_tasks] %s: rapidapi exception: %s", task_id, e_r)
+
+                # Extract audio from mp4 via ffmpeg
+                if mp4_path:
+                    try:
+                        import subprocess
+                        logger.info("[bot_tasks] %s: extracting audio from mp4 via ffmpeg", task_id)
+                        result = subprocess.run(
+                            ["ffmpeg", "-y", "-i", mp4_path, "-vn", "-acodec", "libmp3lame",
+                             "-b:a", "128k", "-ar", "16000", "-ac", "1", audio_path],
+                            capture_output=True, text=True, timeout=180
+                        )
+                        if result.returncode == 0 and os.path.exists(audio_path):
+                            download_result = audio_path
+                            logger.info("[bot_tasks] %s: audio extracted OK: %s", task_id, audio_path)
+                            tasks_store[task_id]["debug_log"] = "fallback: cobalt/rapidapi + ffmpeg OK"
+                        else:
+                            logger.error("[bot_tasks] %s: ffmpeg failed: %s", task_id, result.stderr[:300])
+                        # Cleanup mp4
+                        try:
+                            os.remove(mp4_path)
+                        except Exception:
+                            pass
+                    except Exception as e_ff:
+                        logger.error("[bot_tasks] %s: ffmpeg exception: %s", task_id, e_ff)
+
+            # Если ничего не помогло — пробрасываем исходную ошибку yt-dlp
+            if not download_result:
+                logger.error("[bot_tasks] %s: all download methods failed", task_id)
+                print(f"[bot_tasks] {task_id}: all methods failed")
+                if ytdlp_error:
+                    raise ytdlp_error
+                raise Exception("All download methods failed (yt-dlp, cobalt, rapidapi)")
 
             if tasks_store[task_id].get("status") == "cancelled":
                 logger.info("[bot_tasks] %s: task cancelled by user", task_id)
