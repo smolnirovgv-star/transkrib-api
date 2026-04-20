@@ -161,6 +161,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
     Возвращает (formatted_text, input_tokens, output_tokens, cost_usd).
     При любой ошибке фаллбэк: возвращает raw_text без изменений.
     """
+    logger.info("[format_claude] called, text_len=%d", len(raw_text))
     api_key = os.environ.get("APP_ANTHROPIC_API_KEY", "")
     if not api_key:
         logger.warning("[FORMAT] APP_ANTHROPIC_API_KEY not set, skipping formatting")
@@ -223,7 +224,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
                     len(chunks), len(formatted), total_inp, total_out, cost)
         return formatted, total_inp, total_out, cost
     except Exception as e:
-        logger.error("[FORMAT] exception: %s", e)
+        logger.error("[format_claude] exception: %r", e, exc_info=True)
         return raw_text, 0, 0, 0.0
 
 
