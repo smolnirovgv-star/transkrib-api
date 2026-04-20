@@ -821,7 +821,15 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     """
     from pytubefix import YouTube
     logger.info("[pytubefix] requesting: %s", url)
-    yt = YouTube(url, client="MWEB")
+    import os
+    proxy_url = os.environ.get(
+        "WEBSHARE_PROXY",
+        "http://tnylobxq-rotate:8hj6ju41jo98@p.webshare.io:80"
+    )
+    proxies = {"http": proxy_url, "https": proxy_url}
+    logger.info("[pytubefix] using proxy: %s",
+                proxy_url.split("@")[1] if "@" in proxy_url else "n/a")
+    yt = YouTube(url, client="MWEB", proxies=proxies)
     # Берём progressive MP4 (видео+аудио в одном файле) с максимальным качеством
     stream = (
         yt.streams
