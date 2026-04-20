@@ -155,6 +155,78 @@ def format_with_claude_sync(raw_text: str) -> tuple:
         return raw_text, 0, 0, 0.0
 
 
+async def format_transcription_with_claude(raw_text: str) -> tuple:
+    """
+    Async версия форматирования через Claude с поддержкой чанкинга до 30k симв.
+    Возвращает (formatted_text, input_tokens, output_tokens, cost_usd).
+    При любой ошибке фаллбэк: возвращает raw_text без изменений.
+    """
+    api_key = os.environ.get("APP_ANTHROPIC_API_KEY", "")
+    if not api_key:
+        logger.warning("[FORMAT] APP_ANTHROPIC_API_KEY not set, skipping formatting")
+        return raw_text, 0, 0, 0.0
+
+    CHUNK_SIZE = 30000
+    if len(raw_text) <= CHUNK_SIZE:
+        chunks = [raw_text]
+    else:
+        chunks = []
+        remaining = raw_text
+        while len(remaining) > CHUNK_SIZE:
+            split_at = remaining.rfind('. ', 0, CHUNK_SIZE)
+            if split_at == -1:
+                split_at = CHUNK_SIZE
+            else:
+                split_at += 1
+            chunks.append(remaining[:split_at].strip())
+            remaining = remaining[split_at:].strip()
+        if remaining:
+            chunks.append(remaining)
+
+    results = []
+    total_inp = 0
+    total_out = 0
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            for i, chunk in enumerate(chunks):
+                logger.info("[FORMAT] chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-sonnet-4-20250514",
+                        "max_tokens": 8000,
+                        "messages": [{
+                            "role": "user",
+                            "content": FORMATTING_PROMPT + "\n\n---\n\nОтформатируй транскрипцию согласно инструкциям:\n\n" + chunk,
+                        }],
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.error("[FORMAT] Claude error %d: %s", resp.status_code, resp.text[:300])
+                    return raw_text, 0, 0, 0.0
+                data = resp.json()
+                text = "".join(
+                    b["text"] for b in data.get("content", []) if b.get("type") == "text"
+                )
+                usage = data.get("usage", {})
+                total_inp += usage.get("input_tokens", 0)
+                total_out += usage.get("output_tokens", 0)
+                results.append(text.strip() if text.strip() else chunk)
+        formatted = "\n\n".join(results)
+        cost = (total_inp * 3.0 + total_out * 15.0) / 1_000_000
+        logger.info("[FORMAT] done: %d chunk(s), %d chars, in=%d out=%d cost=$%.4f",
+                    len(chunks), len(formatted), total_inp, total_out, cost)
+        return formatted, total_inp, total_out, cost
+    except Exception as e:
+        logger.error("[FORMAT] exception: %s", e)
+        return raw_text, 0, 0, 0.0
+
+
 def analyze_chunks_with_claude(
     raw_text,
     target_minutes,
@@ -1245,9 +1317,12 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             logger.info("[bot_tasks] %s: SRT format - skipping Claude, returning raw SRT", task_id)
             tasks_store[task_id]["transcription"] = raw_text
         else:
+            # Убираем артефакты Whisper ">>" (маркер смены говорящего)
+            raw_text = raw_text.replace(">>", "").strip()
+            raw_text = " ".join(raw_text.split())
             tasks_store[task_id]["stage"] = "formatting"
             logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
-            formatted_text, inp_tok, out_tok, cost = await asyncio.to_thread(format_with_claude_sync, raw_text)
+            formatted_text, inp_tok, out_tok, cost = await format_transcription_with_claude(raw_text)
             logger.info(
                 "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
             )
