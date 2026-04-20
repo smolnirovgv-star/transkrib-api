@@ -12,5 +12,6 @@ pydantic-settings==2.5.0
 python-dotenv==1.0.1
 aiofiles==24.1.0
 youtube-transcript-api
+pytubefix>=8.8.0
 groq
 ffmpeg-python

@@ -706,6 +706,35 @@ def _prepare_ytdlp_cookies() -> Optional[str]:
         return None
 
 
+def _download_video_pytubefix(url: str, out_path: str) -> None:
+    """
+    Скачивает YouTube-видео через pytubefix.
+    Бросает исключение при любой ошибке (обрабатывается в download_youtube).
+    """
+    from pytubefix import YouTube
+    logger.info("[pytubefix] requesting: %s", url)
+    yt = YouTube(url)
+    # Берём progressive MP4 (видео+аудио в одном файле) с максимальным качеством
+    stream = (
+        yt.streams
+        .filter(progressive=True, file_extension="mp4")
+        .order_by("resolution")
+        .desc()
+        .first()
+    )
+    if stream is None:
+        # Фоллбэк: adaptive (видео без звука — но хоть что-то)
+        stream = yt.streams.filter(file_extension="mp4").order_by("resolution").desc().first()
+    if stream is None:
+        raise RuntimeError("pytubefix: no suitable stream found")
+    logger.info("[pytubefix] downloading stream: itag=%s resolution=%s filesize=%s",
+                stream.itag, stream.resolution, stream.filesize)
+    out_dir = os.path.dirname(out_path) or "."
+    out_name = os.path.basename(out_path)
+    stream.download(output_path=out_dir, filename=out_name)
+    logger.info("[pytubefix] downloaded to %s", out_path)
+
+
 async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     """
     Tries to download a YouTube video via fallback chain.
@@ -715,7 +744,17 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     import glob as _glob
     errors = []
 
-    # Level 0: yt-dlp (with Webshare proxy + cookies)
+    # Level 0: pytubefix (не требует cookies)
+    try:
+        logger.info("download_youtube: trying pytubefix")
+        await asyncio.to_thread(_download_video_pytubefix, url, out_path)
+        logger.info("download_youtube: pytubefix OK")
+        return {"ok": True, "method": "pytubefix", "path": out_path}
+    except Exception as e:
+        logger.warning("download_youtube: pytubefix failed: %r", e)
+        errors.append(f"pytubefix: {e}")
+
+    # Level 1: yt-dlp (with Webshare proxy + cookies)
     try:
         logger.info("download_youtube: trying yt-dlp")
         cookies_file_v = _prepare_ytdlp_cookies() or _get_cookie_file()
