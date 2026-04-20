@@ -402,7 +402,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "18/worst/bestvideo[height<=360]+bestaudio/best",
+            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
@@ -561,6 +561,7 @@ def _download_video_cobalt(url: str, task_id: str):
             },
             timeout=30,
         )
+        logger.info("[cobalt] raw response: status=%s body=%s", resp.status_code, resp.text[:500])
         if resp.status_code != 200:
             logger.error("[COBALT] API error %d: %s", resp.status_code, resp.text[:200])
             return None
@@ -568,6 +569,7 @@ def _download_video_cobalt(url: str, task_id: str):
         status = data.get("status")
         logger.info("[COBALT] API status: %s", status)
         if status not in ("tunnel", "redirect", "stream"):
+            logger.warning("[cobalt] no file in response: keys=%s status=%s", list(data.keys()), data.get("status"))
             logger.error("[COBALT] unexpected status: %s, data: %s", status, str(data)[:200])
             return None
         direct_url = data.get("url")
@@ -634,6 +636,7 @@ def _download_video_rapidapi(url: str, task_id: str):
             params={"url": url, "title": "video"},
             timeout=30,
         )
+        logger.info("[rapidapi] raw response: status=%s body=%s", resp.status_code, resp.text[:500])
         if resp.status_code != 200:
             logger.error("[RAPIDAPI] error %d: %s", resp.status_code, resp.text[:200])
             return None
@@ -650,6 +653,9 @@ def _download_video_rapidapi(url: str, task_id: str):
             (data[0].get("url") if isinstance(data, list) and data else None)
         )
         if not mp4_url:
+            logger.warning("[rapidapi] no file in response: keys=%s status=%s",
+                           list(data.keys()) if isinstance(data, dict) else str(type(data)),
+                           data.get("status") if isinstance(data, dict) else None)
             logger.error("[RAPIDAPI] no download URL in response: %s", str(data)[:300])
             return None
         logger.info("[RAPIDAPI] downloading from CDN...")
@@ -1261,6 +1267,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     else:
                         logger.error("[CUT] %s: all YouTube download methods failed: %s",
                                      task_id, dl_result["error"])
+                        tasks_store[task_id]["cut_download_warning"] = (
+                            "⚠️ Транскрипция готова, но нарезанное видео не удалось скачать. "
+                            "Попробуйте другое видео или режим 'Только транскрипция'."
+                        )
                 else:
                     # Non-YouTube (Rutube, VK etc.): yt-dlp only
                     logger.info("[CUT] %s: trying yt-dlp for non-YouTube...", task_id)
