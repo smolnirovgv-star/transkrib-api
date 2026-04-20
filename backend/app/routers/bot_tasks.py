@@ -829,22 +829,18 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     proxies = {"http": proxy_url, "https": proxy_url}
     logger.info("[pytubefix] using proxy: %s",
                 proxy_url.split("@")[1] if "@" in proxy_url else "n/a")
-    yt = YouTube(url, client="MWEB", proxies=proxies)
-    # Берём progressive MP4 (видео+аудио в одном файле) с максимальным качеством
-    stream = (
-        yt.streams
-        .filter(progressive=True, file_extension="mp4")
-        .order_by("resolution")
-        .desc()
-        .first()
-    )
-    if stream is None:
-        # Фоллбэк: adaptive (видео без звука — но хоть что-то)
-        stream = yt.streams.filter(file_extension="mp4").order_by("resolution").desc().first()
-    if stream is None:
-        raise RuntimeError("pytubefix: no suitable stream found")
-    logger.info("[pytubefix] downloading stream: itag=%s resolution=%s filesize=%s",
-                stream.itag, stream.resolution, stream.filesize)
+    try:
+        yt = YouTube(url, client="MWEB", proxies=proxies)
+        logger.info("[pytubefix] YouTube object OK, fetching streams...")
+        stream = yt.streams.filter(progressive=True, file_extension="mp4").first()
+        if stream is None:
+            logger.error("[pytubefix] no progressive MP4 stream found")
+            raise RuntimeError("No stream")
+        logger.info("[pytubefix] stream: itag=%s res=%s", stream.itag, stream.resolution)
+    except Exception as e:
+        logger.error("[pytubefix] FAILED (proxy=%s): %r",
+                     bool(proxies), e, exc_info=True)
+        raise
     out_dir = os.path.dirname(out_path) or "."
     out_name = os.path.basename(out_path)
     stream.download(output_path=out_dir, filename=out_name)
