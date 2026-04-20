@@ -815,37 +815,34 @@ def _prepare_ytdlp_cookies() -> Optional[str]:
 
 
 def _download_video_pytubefix(url: str, out_path: str) -> None:
-    """
-    Скачивает YouTube-видео через pytubefix.
-    Бросает исключение при любой ошибке (обрабатывается в download_youtube).
-    """
+    """Download YouTube video via pytubefix (no cookies, no proxy)."""
     from pytubefix import YouTube
     logger.info("[pytubefix] requesting: %s", url)
-    import os
-    proxy_url = os.environ.get(
-        "WEBSHARE_PROXY",
-        "http://tnylobxq-rotate:8hj6ju41jo98@p.webshare.io:80"
+    yt = YouTube(url)
+    stream = (
+        yt.streams
+          .filter(progressive=True, file_extension="mp4")
+          .order_by("resolution")
+          .desc()
+          .first()
     )
-    proxies = {"http": proxy_url, "https": proxy_url}
-    logger.info("[pytubefix] using proxy: %s",
-                proxy_url.split("@")[1] if "@" in proxy_url else "n/a")
-    try:
-        yt = YouTube(url, client="MWEB", proxies=proxies)
-        logger.info("[pytubefix] YouTube object OK, fetching streams...")
-        stream = yt.streams.filter(progressive=True, file_extension="mp4").first()
-        if stream is None:
-            logger.error("[pytubefix] no progressive MP4 stream found")
-            raise RuntimeError("No stream")
-        logger.info("[pytubefix] stream: itag=%s res=%s", stream.itag, stream.resolution)
-    except Exception as e:
-        logger.error("[pytubefix] FAILED (proxy=%s): %r",
-                     bool(proxies), e, exc_info=True)
-        raise
+    if stream is None:
+        stream = (
+            yt.streams
+              .filter(file_extension="mp4")
+              .order_by("resolution")
+              .desc()
+              .first()
+        )
+    if stream is None:
+        raise RuntimeError("pytubefix: no suitable stream found")
+    logger.info("[pytubefix] stream: itag=%s res=%s size=%s",
+                stream.itag, stream.resolution, stream.filesize)
+    import os
     out_dir = os.path.dirname(out_path) or "."
     out_name = os.path.basename(out_path)
     stream.download(output_path=out_dir, filename=out_name)
     logger.info("[pytubefix] downloaded to %s", out_path)
-
 
 async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     """
