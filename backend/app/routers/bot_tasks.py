@@ -814,7 +814,7 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     """
     from pytubefix import YouTube
     logger.info("[pytubefix] requesting: %s", url)
-    yt = YouTube(url)
+    yt = YouTube(url, use_po_token=True)
     # Берём progressive MP4 (видео+аудио в одном файле) с максимальным качеством
     stream = (
         yt.streams
