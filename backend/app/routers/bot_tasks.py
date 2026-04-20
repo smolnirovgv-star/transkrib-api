@@ -191,21 +191,24 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
         async with httpx.AsyncClient(timeout=90.0) as client:
             for i, chunk in enumerate(chunks):
                 logger.info("[FORMAT] chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-20250514",
-                        "max_tokens": 8000,
-                        "messages": [{
-                            "role": "user",
-                            "content": FORMATTING_PROMPT + "\n\n---\n\nОтформатируй транскрипцию согласно инструкциям:\n\n" + chunk,
-                        }],
-                    },
+                resp = await asyncio.wait_for(
+                    client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-sonnet-4-20250514",
+                            "max_tokens": 8000,
+                            "messages": [{
+                                "role": "user",
+                                "content": FORMATTING_PROMPT + "\n\n---\n\nОтформатируй транскрипцию согласно инструкциям:\n\n" + chunk,
+                            }],
+                        },
+                    ),
+                    timeout=60.0,
                 )
                 if resp.status_code != 200:
                     logger.error("[FORMAT] Claude error %d: %s", resp.status_code, resp.text[:300])
@@ -223,6 +226,9 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
         logger.info("[FORMAT] done: %d chunk(s), %d chars, in=%d out=%d cost=$%.4f",
                     len(chunks), len(formatted), total_inp, total_out, cost)
         return formatted, total_inp, total_out, cost
+    except asyncio.TimeoutError:
+        logger.error("[format_claude] TIMEOUT after 60s, returning raw text")
+        return raw_text, 0, 0, 0.0
     except Exception as e:
         logger.error("[format_claude] exception: %r", e, exc_info=True)
         return raw_text, 0, 0, 0.0
@@ -815,7 +821,7 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     """
     from pytubefix import YouTube
     logger.info("[pytubefix] requesting: %s", url)
-    yt = YouTube(url, client="WEB")
+    yt = YouTube(url, client="MWEB")
     # Берём progressive MP4 (видео+аудио в одном файле) с максимальным качеством
     stream = (
         yt.streams
