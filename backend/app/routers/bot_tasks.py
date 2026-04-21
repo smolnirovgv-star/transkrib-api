@@ -818,7 +818,15 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     """Download YouTube video via pytubefix (no cookies, no proxy)."""
     from pytubefix import YouTube
     logger.info("[pytubefix] requesting: %s", url)
-    yt = YouTube(url)
+    proxy_url = os.environ.get(
+        "WEBSHARE_PROXY",
+        "http://tnylobxq-rotate:8hj6ju41jo98@p.webshare.io:80/"
+    )
+    proxies = {"http": proxy_url, "https": proxy_url}
+    masked = proxy_url.split("@")[1] if "@" in proxy_url else "no-auth"
+    logger.info("[pytubefix] using proxy: %s", masked)
+    yt = YouTube(url, proxies=proxies)
+    logger.info("[pytubefix] YouTube object created")
     stream = (
         yt.streams
           .filter(progressive=True, file_extension="mp4")
