@@ -188,10 +188,13 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
     total_inp = 0
     total_out = 0
     try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             for i, chunk in enumerate(chunks):
                 logger.info("[FORMAT] chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
-                logger.info("[format_claude] sending chunk %d/%d to Anthropic (timeout=%ds)", i+1, len(chunks), 180)
+                logger.info(
+                    "[format_claude] sending chunk %d/%d (%d chars) to Anthropic, timeout=180s",
+                    i + 1, len(chunks), len(chunk)
+                )
                 resp = await asyncio.wait_for(
                     client.post(
                         "https://api.anthropic.com/v1/messages",
