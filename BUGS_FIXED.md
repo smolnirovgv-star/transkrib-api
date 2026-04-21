@@ -1,5 +1,15 @@
 # Transkrib — Зафиксированные баги и решения
 
+## ✅ Эпохальные рабочие сборки (safe rollback points)
+
+| Дата | Tag | Коммит | Что работает |
+|---|---|---|---|
+| 2026-04-21 | epoch/youtube-groq-working-2026-04-21 | 383e9a0a84fe1e7088e5d3e4cca516164a544aea | YouTube+Groq полная цепочка |
+| 2026-04-20 | test-2026-04-21 | 9e0feef | Rollback к простому pytubefix |
+
+Откат: git checkout <tag> → Railway redeploy (2 минуты).
+
+
 ## КРИТИЧНО — выполнять при каждой сборке
 
 ### 1. GitHub Release уходит в Draft
