@@ -191,6 +191,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
         async with httpx.AsyncClient(timeout=90.0) as client:
             for i, chunk in enumerate(chunks):
                 logger.info("[FORMAT] chunk %d/%d (%d chars)", i + 1, len(chunks), len(chunk))
+                logger.info("[format_claude] sending chunk %d/%d to Anthropic (timeout=%ds)", i+1, len(chunks), 180)
                 resp = await asyncio.wait_for(
                     client.post(
                         "https://api.anthropic.com/v1/messages",
@@ -208,7 +209,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
                             }],
                         },
                     ),
-                    timeout=60.0,
+                    timeout=180,
                 )
                 if resp.status_code != 200:
                     logger.error("[FORMAT] Claude error %d: %s", resp.status_code, resp.text[:300])
