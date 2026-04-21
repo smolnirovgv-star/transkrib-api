@@ -846,7 +846,6 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
         raise RuntimeError("pytubefix: no suitable stream found")
     logger.info("[pytubefix] stream: itag=%s res=%s size=%s",
                 stream.itag, stream.resolution, stream.filesize)
-    import os
     out_dir = os.path.dirname(out_path) or "."
     out_name = os.path.basename(out_path)
     stream.download(output_path=out_dir, filename=out_name)
