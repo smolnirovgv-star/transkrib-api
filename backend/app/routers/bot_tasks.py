@@ -514,7 +514,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+            "format": "best[ext=mp4][height<=720]/best[height<=720]/best[ext=mp4]/best",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
@@ -1241,10 +1241,15 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                             tasks_store[task_id]["debug_log"] = f"fallback: {dl_result['method']} + ffmpeg OK"
                         else:
                             logger.error("[bot_tasks] %s: ffmpeg failed: %s", task_id, result.stderr[:300])
+                        standard_mp4 = f"/tmp/{task_id}.mp4"
                         try:
-                            os.remove(mp4_path)
-                        except Exception:
-                            pass
+                            if mp4_path != standard_mp4:
+                                os.rename(mp4_path, standard_mp4)
+                            logger.info("[REUSE] keeping mp4 for CUT stage: %s", standard_mp4)
+                        except Exception as e_mv:
+                            logger.warning("[REUSE] failed to keep mp4: %s", e_mv)
+                            try: os.remove(mp4_path)
+                            except: pass
                     except Exception as e_ff:
                         logger.error("[bot_tasks] %s: ffmpeg exception: %s", task_id, e_ff)
                 else:
@@ -1413,8 +1418,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
             video_path = f"/tmp/{task_id}.mp4"
 
-            if not os.path.exists(video_path):
-                logger.info("[CUT] %s: downloading video for cutting...", task_id)
+            if os.path.exists(video_path):
+                logger.info("[CUT] REUSING existing mp4: %s", video_path)
+            else:
+                logger.info("[CUT] %s: mp4 not found, downloading for cutting...", task_id)
                 video_path = None
 
                 is_youtube_cut = "youtube.com" in url or "youtu.be" in url
@@ -1516,7 +1523,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = str(e)[:500]
     finally:
-        for ext in [".mp3", ".m4a", ".webm", ".opus", ""]:
+        for ext in [".mp3", ".m4a", ".webm", ".opus", ".mp4", ""]:
             p = "/tmp/" + task_id + ext
             if os.path.exists(p):
                 os.remove(p)
