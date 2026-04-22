@@ -1134,8 +1134,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
         logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
-            task_id, fmt, "srt" if fmt == "fmt_srt" else "text")
-        output_format = "srt" if fmt == "fmt_srt" else "text"  # fmt_md treated as text
+            task_id, fmt, "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text")
+        output_format = "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text"  # fmt_md treated as text
 
         # Check video duration before processing
         try:
@@ -1166,7 +1166,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
         # Step 1a: Try Supadata API first (works from any IP, no proxy)
         is_supadata_supported = is_youtube or "vk.com/video" in url or "vkvideo.ru" in url
-        if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text and fmt != "fmt_srt":
+        if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text and fmt not in ("fmt_srt", "fmt_cut_srt"):
             try:
                 logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
                 raw_text = await asyncio.to_thread(_get_transcript_supadata, url)
