@@ -4,6 +4,7 @@
 
 | Дата | Tag | Коммит | Что работает |
 |---|---|---|---|
+| 2026-04-22 | epoch/full-pipeline-with-payments-2026-04-22 | b21ae46b50a3de160887f81e19367b36e241090a | 🏆 PRODUCTION: YouTube+Groq+Claude+нарезка+ЮKassa |
 | 2026-04-21 20:59 | epoch/full-pipeline-working-2026-04-21 | 6287a12d0985325f94d833b9ffb8713b991486cd | 🏆 ВСЯ ЦЕПОЧКА: YouTube+Groq+Claude формат+нарезка видео |
 | 2026-04-21 | epoch/youtube-groq-working-2026-04-21 | 383e9a0a84fe1e7088e5d3e4cca516164a544aea | YouTube+Groq полная цепочка |
 | 2026-04-20 | test-2026-04-21 | 9e0feef | Rollback к простому pytubefix |
