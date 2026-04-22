@@ -41,6 +41,14 @@ except Exception as e:
     logger.error("FAILED to load bot_tasks router: %s", e, exc_info=True)
     raise
 
+try:
+    from app.routers.bot_payments import router as bot_payments_router
+    app.include_router(bot_payments_router)
+    logger.info("bot_payments router loaded OK")
+except Exception as e:
+    logger.error("FAILED to load bot_payments router: %s", e, exc_info=True)
+    raise
+
 
 @app.get("/health")
 async def health():
