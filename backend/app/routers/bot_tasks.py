@@ -380,6 +380,8 @@ def cut_video_with_ffmpeg(
 
         final_size = _os.path.getsize(output_path) / 1024 / 1024
         logger.info("[CUT] %s: done -> %s (%.1f MB)", task_id, output_path, final_size)
+        logger.info("[CUT] final mp4 reencoded to H.264+AAC: %s (size=%s MB)",
+                    output_path, round(_os.path.getsize(output_path) / 1024 / 1024, 1))
         return True
 
     except Exception as e:
