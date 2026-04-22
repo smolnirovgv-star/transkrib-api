@@ -52,3 +52,9 @@ logs/
 design_reference/
 design_reference */
 design_reference*/
+
+# Production keys — never commit
+ключи для работы/
+keys/
+*.key
+*.secret
