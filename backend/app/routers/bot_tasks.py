@@ -878,9 +878,15 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     # Level 0: pytubefix (не требует cookies)
     try:
         logger.info("download_youtube: trying pytubefix")
-        await asyncio.to_thread(_download_video_pytubefix, url, out_path)
+        await asyncio.wait_for(
+            asyncio.to_thread(_download_video_pytubefix, url, out_path),
+            timeout=60
+        )
         logger.info("download_youtube: pytubefix OK")
         return {"ok": True, "method": "pytubefix", "path": out_path}
+    except asyncio.TimeoutError:
+        logger.warning("[download_youtube] pytubefix timeout after 60s, moving to next fallback")
+        errors.append("pytubefix: timeout 60s")
     except Exception as e:
         logger.warning("download_youtube: pytubefix failed: %r", e)
         errors.append(f"pytubefix: {e}")
@@ -889,6 +895,7 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     try:
         logger.info("download_youtube: trying yt-dlp")
         cookies_file_v = _prepare_ytdlp_cookies() or _get_cookie_file()
+        logger.info("[download_youtube] yt-dlp format: best[ext=mp4][height<=720]/best[height<=720]/best[ext=mp4]/best")
         tmp_id = task_id + "_ytdl"
         await asyncio.wait_for(
             asyncio.to_thread(_download_with_ytdlp, url, tmp_id, cookies_file_v, True),
