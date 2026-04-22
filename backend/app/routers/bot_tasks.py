@@ -363,7 +363,13 @@ def cut_video_with_ffmpeg(
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
-            "-c", "copy",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-movflags", "+faststart",
+            "-pix_fmt", "yuv420p",
             output_path
         ]
         result = subprocess.run(cmd_concat, capture_output=True, text=True, timeout=120)
