@@ -556,10 +556,13 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         logger.info("[DOWNLOAD] Using cookies from YOUTUBE_COOKIES_B64 (base64)")
     else:
         logger.info("[DOWNLOAD] No cookies (YOUTUBE_COOKIES_B64 not set)")
-    proxy_url = os.environ.get("YOUTUBE_PROXY", "")
+    proxy_url = os.environ.get("YOUTUBE_PROXY", "") or os.environ.get("WEBSHARE_PROXY", "")
     if proxy_url:
         ydl_opts["proxy"] = proxy_url
-        logger.info("[DOWNLOAD] Using proxy for video: %s", proxy_url[:30])
+        logger.info("[ytdlp] proxy enabled (source=%s)",
+                    "YOUTUBE_PROXY" if os.environ.get("YOUTUBE_PROXY") else "WEBSHARE_PROXY")
+    else:
+        logger.warning("[ytdlp] NO proxy configured — YouTube likely to block")
     ydl_opts["extractor_args"] = {
         "youtube": {"player_client": ["ios", "web"]}
     }
