@@ -50,6 +50,7 @@ tasks_store: dict = {}
 
 DOWNLOAD_TIMEOUT = 600
 SUPADATA_API_KEY = os.getenv("SUPADATA_API_KEY", "")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 
 FORMATTING_PROMPT = """Ты — профессиональный редактор. Тебе дана сырая транскрипция видео/аудио для Telegram.
 
@@ -736,72 +737,102 @@ def _download_video_cobalt(url: str, task_id: str):
         return None
 
 
-def _download_video_rapidapi(url: str, task_id: str):
-    """
-    Скачивает видео через RapidAPI YouTube to MP4.
-    Fallback когда cobalt недоступен.
-    Возвращает путь к mp4 или None.
-    """
-    api_key = os.environ.get("RAPIDAPI_KEY", "")
-    if not api_key:
-        logger.error("[RAPIDAPI] RAPIDAPI_KEY not set")
-        return None
+def _extract_youtube_id(url: str) -> Optional[str]:
+    """Extract video ID from YouTube URL."""
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
 
-    output_path = f"/tmp/{task_id}_video.mp4"
-    logger.info("[RAPIDAPI] requesting MP4 for: %s", url[:80])
+
+async def _download_video_rapidapi(url: str, out_path: str, task_id: str) -> bool:
+    """Download YouTube MP4 via RapidAPI YouTube Media Downloader (DataFanatic).
+    Returns True on success, False otherwise."""
+    if not RAPIDAPI_KEY:
+        logger.warning("[rapidapi] RAPIDAPI_KEY not set, skipping")
+        return False
+
+    video_id = _extract_youtube_id(url)
+    if not video_id:
+        logger.warning("[rapidapi] failed to extract video_id from: %s", url)
+        return False
+
+    api_url = "https://youtube-media-downloader.p.rapidapi.com/v2/video/details"
+    headers = {
+        "x-rapidapi-host": "youtube-media-downloader.p.rapidapi.com",
+        "x-rapidapi-key": RAPIDAPI_KEY,
+    }
+    params = {
+        "videoId": video_id,
+        "urlAccess": "normal",
+        "videos": "auto",
+        "audios": "auto",
+    }
 
     try:
-        resp = requests.get(
-            "https://youtube-to-mp4.p.rapidapi.com/",
-            headers={
-                "x-rapidapi-key": api_key,
-                "x-rapidapi-host": "youtube-to-mp4.p.rapidapi.com",
-            },
-            params={"url": url, "title": "video"},
-            timeout=30,
-        )
-        logger.info("[rapidapi] raw response: status=%s body=%s", resp.status_code, resp.text[:500])
-        if resp.status_code != 200:
-            logger.error("[RAPIDAPI] error %d: %s", resp.status_code, resp.text[:200])
-            return None
-        data = resp.json()
-        logger.info("[RAPIDAPI] full response: %s", str(data)[:300])
-        mp4_url = (
-            data.get("url") or
-            data.get("mp4") or
-            data.get("link") or
-            data.get("download") or
-            data.get("downloadUrl") or
-            data.get("video_url") or
-            data.get("videoUrl") or
-            (data[0].get("url") if isinstance(data, list) and data else None)
-        )
-        if not mp4_url:
-            logger.warning("[rapidapi] no file in response: keys=%s status=%s",
-                           list(data.keys()) if isinstance(data, dict) else str(type(data)),
-                           data.get("status") if isinstance(data, dict) else None)
-            logger.error("[RAPIDAPI] no download URL in response: %s", str(data)[:300])
-            return None
-        logger.info("[RAPIDAPI] downloading from CDN...")
-        total = 0
-        with requests.get(mp4_url, stream=True, timeout=300,
-                          headers={"User-Agent": "Mozilla/5.0"}) as r:
-            if r.status_code != 200:
-                logger.error("[RAPIDAPI] CDN download failed: %d", r.status_code)
-                return None
-            with open(output_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
+        async with httpx.AsyncClient(timeout=60) as client:
+            logger.info("[rapidapi] requesting video details for: %s (videoId=%s)", url, video_id)
+            resp = await client.get(api_url, headers=headers, params=params)
+
+            if resp.status_code != 200:
+                logger.warning("[rapidapi] status=%s body=%s",
+                               resp.status_code, resp.text[:300])
+                return False
+
+            data = resp.json()
+
+            if data.get("errorId") != "Success":
+                logger.warning("[rapidapi] errorId=%s", data.get("errorId"))
+                return False
+
+            items = data.get("videos", {}).get("items", [])
+            if not items:
+                logger.warning("[rapidapi] no video items in response")
+                return False
+
+            mp4_with_audio = [i for i in items if i.get("extension") == "mp4" and i.get("hasAudio") is True]
+
+            if not mp4_with_audio:
+                logger.warning("[rapidapi] no mp4 with audio found")
+                return False
+
+            quality_priority = {"720p": 1, "480p": 2, "360p": 3, "240p": 4, "144p": 5}
+            best = sorted(
+                [i for i in mp4_with_audio if i.get("height", 0) <= 720],
+                key=lambda x: (quality_priority.get(x.get("quality"), 99), -x.get("height", 0))
+            )
+
+            if not best:
+                best = mp4_with_audio
+
+            chosen = best[0]
+            video_url = chosen.get("url")
+            quality = chosen.get("quality", "unknown")
+            size_mb = round(chosen.get("size", 0) / 1024 / 1024, 1)
+
+            if not video_url:
+                logger.warning("[rapidapi] chosen item has no URL")
+                return False
+
+            logger.info("[rapidapi] downloading %s (%s MB)...", quality, size_mb)
+
+            async with client.stream("GET", video_url) as r:
+                r.raise_for_status()
+                with open(out_path, "wb") as f:
+                    async for chunk in r.aiter_bytes(8192):
                         f.write(chunk)
-                        total += len(chunk)
-        if total < 10000:
-            logger.error("[RAPIDAPI] file too small: %d bytes", total)
-            return None
-        logger.info("[RAPIDAPI] downloaded %.1f MB -> %s", total / 1024 / 1024, output_path)
-        return output_path
+
+            actual_mb = round(os.path.getsize(out_path) / 1024 / 1024, 1)
+            logger.info("[rapidapi] downloaded %s MB to %s", actual_mb, out_path)
+            return True
+
     except Exception as e:
-        logger.error("[RAPIDAPI] exception: %s", e)
-        return None
+        logger.warning("[rapidapi] failed: %s", str(e)[:200])
+        return False
 
 
 _YTDLP_COOKIES_PATH = None
@@ -979,11 +1010,7 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     # Level 2: RapidAPI
     try:
         logger.info("download_youtube: trying rapidapi")
-        rapidapi_path = await asyncio.to_thread(_download_video_rapidapi, url, task_id)
-        if rapidapi_path and os.path.exists(rapidapi_path):
-            if rapidapi_path != out_path:
-                import shutil as _shutil
-                _shutil.move(rapidapi_path, out_path)
+        if await _download_video_rapidapi(url, out_path, task_id):
             logger.info("download_youtube: rapidapi OK")
             return {"ok": True, "method": "rapidapi", "path": out_path}
         errors.append("rapidapi: no file returned")
