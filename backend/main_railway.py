@@ -16,6 +16,10 @@ logger = logging.getLogger("transkrib")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio as _asyncio
+    from app.routers.bot_tasks import _tmp_cleanup_worker
+    _asyncio.create_task(_tmp_cleanup_worker())
+    logger.info("[startup] tmp cleanup worker started (TTL=30min)")
     logger.info("Transkrib API (Railway) starting...")
     logger.info("Python path: %s", os.environ.get("PYTHONPATH", "not set"))
     logger.info("PORT: %s", os.environ.get("PORT", "not set"))

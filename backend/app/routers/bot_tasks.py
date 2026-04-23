@@ -49,8 +49,35 @@ router = APIRouter()
 tasks_store: dict = {}
 
 DOWNLOAD_TIMEOUT = 600
+TMP_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes for resize reuse
 SUPADATA_API_KEY = os.getenv("SUPADATA_API_KEY", "")
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
+
+
+async def _tmp_cleanup_worker():
+    """Background task: removes /tmp/{uuid}.mp4, .txt, _resized.mp4
+    older than TMP_CACHE_TTL_SECONDS. Runs every 10 minutes."""
+    import glob as _iglob
+    while True:
+        try:
+            now = time.time()
+            patterns = ["/tmp/*.mp4", "/tmp/*.txt", "/tmp/*_resized.mp4"]
+            cleaned = 0
+            for pattern in patterns:
+                for path in _iglob.glob(pattern):
+                    try:
+                        age = now - os.path.getmtime(path)
+                        if age > TMP_CACHE_TTL_SECONDS:
+                            os.remove(path)
+                            cleaned += 1
+                    except (FileNotFoundError, PermissionError):
+                        pass
+            if cleaned > 0:
+                logger.info("[tmp_cleanup] removed %d expired files", cleaned)
+        except Exception as e:
+            logger.warning("[tmp_cleanup] error: %s", e)
+        await asyncio.sleep(600)
+
 
 FORMATTING_PROMPT = """Ты — профессиональный редактор. Тебе дана сырая транскрипция видео/аудио для Telegram.
 
@@ -240,7 +267,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
         return raw_text, 0, 0, 0.0
 
 
-def analyze_chunks_with_claude(
+def _select_chunks_with_claude(
     raw_text,
     target_minutes,
     total_duration_seconds
@@ -1450,6 +1477,16 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 "output_tokens": out_tok,
                 "cost_usd": cost,
             }
+        # Save raw transcript for resize reuse
+        if raw_text:
+            transcript_path = f"/tmp/{task_id}.txt"
+            try:
+                with open(transcript_path, "w", encoding="utf-8") as _tf:
+                    _tf.write(raw_text)
+                logger.info("[CACHE] saved transcript to %s (%d chars)", transcript_path, len(raw_text))
+            except Exception as e_cache:
+                logger.warning("[CACHE] failed to save transcript: %s", e_cache)
+
         # === CHUNK ANALYSIS ===
         cut_min_val = 0
         if cut_minutes:
@@ -1465,7 +1502,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             video_duration = tasks_store[task_id].get("duration_seconds", len(raw_text) * 2)
 
             chunk_result = await asyncio.to_thread(
-                analyze_chunks_with_claude,
+                _select_chunks_with_claude,
                 raw_text,
                 cut_min_val,
                 video_duration
@@ -1614,7 +1651,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = str(e)[:500]
     finally:
-        for ext in [".mp3", ".m4a", ".webm", ".opus", ".mp4", ""]:
+        for ext in [".mp3", ".m4a", ".webm", ".opus", ""]:
             p = "/tmp/" + task_id + ext
             if os.path.exists(p):
                 os.remove(p)
@@ -1666,6 +1703,55 @@ async def download_video(task_id: str):
         media_type="video/mp4",
         filename=f"transkrib_{task_id[:8]}.mp4"
     )
+
+
+
+@router.post("/api/tasks/{task_id}/resize")
+async def resize_task(task_id: str, target_minutes: float):
+    """Reuse cached MP4+transcript to re-cut with new target duration."""
+    from fastapi import HTTPException
+    mp4_path = f"/tmp/{task_id}.mp4"
+    transcript_path = f"/tmp/{task_id}.txt"
+
+    if not os.path.exists(mp4_path) or not os.path.exists(transcript_path):
+        raise HTTPException(404, "Cached files not found — please re-send the link")
+
+    with open(transcript_path, encoding="utf-8") as _f:
+        transcript = _f.read()
+
+    logger.info("[RESIZE] task=%s target=%.1f min", task_id, target_minutes)
+
+    video_duration = len(transcript) * 2  # rough estimate
+    chunk_result = await asyncio.to_thread(
+        _select_chunks_with_claude, transcript, target_minutes, video_duration
+    )
+    if "error" in chunk_result:
+        raise HTTPException(500, f"Claude error: {chunk_result['error']}")
+
+    chunks = chunk_result.get("chunks", [])
+    logger.info("[RESIZE] selected %d chunks", len(chunks))
+
+    output_path = f"/tmp/{task_id}_resized.mp4"
+    ok = await asyncio.to_thread(
+        cut_video_with_ffmpeg, mp4_path, chunks, output_path, task_id
+    )
+    if not ok or not os.path.exists(output_path):
+        raise HTTPException(500, "ffmpeg failed to produce resized video")
+
+    size_mb = round(os.path.getsize(output_path) / 1024 / 1024, 1)
+    logger.info("[RESIZE] done: %s (%s MB)", output_path, size_mb)
+    return {"ok": True, "path": output_path, "size_mb": size_mb}
+
+
+@router.get("/api/tasks/{task_id}/resized_video")
+async def get_resized_video(task_id: str):
+    """Serve the resized video file."""
+    from fastapi.responses import FileResponse
+    from fastapi import HTTPException
+    path = f"/tmp/{task_id}_resized.mp4"
+    if not os.path.exists(path):
+        raise HTTPException(404, "Resized video not found")
+    return FileResponse(path, media_type="video/mp4", filename=f"resized_{task_id[:8]}.mp4")
 
 
 @router.get("/api/debug/logs")
