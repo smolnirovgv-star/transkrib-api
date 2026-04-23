@@ -49,6 +49,7 @@ router = APIRouter()
 tasks_store: dict = {}
 
 DOWNLOAD_TIMEOUT = 600
+SUPADATA_API_KEY = os.getenv("SUPADATA_API_KEY", "")
 
 FORMATTING_PROMPT = """Ты — профессиональный редактор. Тебе дана сырая транскрипция видео/аудио для Telegram.
 
@@ -866,6 +867,49 @@ def _download_video_pytubefix(url: str, out_path: str) -> None:
     stream.download(output_path=out_dir, filename=out_name)
     logger.info("[pytubefix] downloaded to %s", out_path)
 
+async def _download_video_supadata(url: str, out_path: str, task_id: str) -> bool:
+    """Level 0 fallback: Supadata.ai YouTube downloader.
+    Returns True on success, False otherwise."""
+    if not SUPADATA_API_KEY:
+        logger.warning("[supadata] SUPADATA_API_KEY not set, skipping")
+        return False
+
+    api_url = "https://api.supadata.ai/v1/youtube/video"
+    headers = {"x-api-key": SUPADATA_API_KEY}
+    params = {"url": url, "format": "mp4"}
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            logger.info("[supadata] requesting MP4 for: %s", url)
+            resp = await client.get(api_url, headers=headers, params=params)
+
+            if resp.status_code != 200:
+                logger.warning("[supadata] status=%s body=%s",
+                               resp.status_code, resp.text[:300])
+                return False
+
+            data = resp.json()
+            video_url = data.get("video_url") or data.get("url") or data.get("download_url")
+            if not video_url:
+                logger.warning("[supadata] no video_url in response: %s",
+                               str(data)[:300])
+                return False
+
+            logger.info("[supadata] got video_url, downloading...")
+            async with client.stream("GET", video_url) as r:
+                r.raise_for_status()
+                with open(out_path, "wb") as f:
+                    async for chunk in r.aiter_bytes(8192):
+                        f.write(chunk)
+
+            size_mb = round(os.path.getsize(out_path) / 1024 / 1024, 1)
+            logger.info("[supadata] downloaded %s MB to %s", size_mb, out_path)
+            return True
+
+    except Exception as e:
+        logger.warning("[supadata] failed: %s", str(e)[:200])
+        return False
+
 async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     """
     Tries to download a YouTube video via fallback chain.
@@ -875,7 +919,12 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
     import glob as _glob
     errors = []
 
-    # Level 0: pytubefix (не требует cookies)
+    # Level 0: Supadata (professional YouTube downloader)
+    logger.info("download_youtube: trying supadata (Level 0)")
+    if await _download_video_supadata(url, out_path, task_id):
+        return {"ok": True, "method": "supadata", "path": out_path}
+
+    # Level 1: pytubefix (не требует cookies)
     try:
         logger.info("download_youtube: trying pytubefix")
         await asyncio.wait_for(
