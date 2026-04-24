@@ -106,6 +106,16 @@ ffmpeg получает пустой/None аргумент для -ss/-to.
 - ffmpeg cmd логируется перед каждым subprocess.run
 - `tasks_store["cut_error"]` + уведомление пользователя в Telegram если нарезка упала
 
+
+### 12. CUT fmt_cut_srt: SRT timestamp comma→dot (24.04.2026)
+**Логи:** `Invalid duration for option ss: 00:02:54,264`
+**Причина:** Groq Whisper возвращает SRT с запятой как разделителем миллисекунд ("HH:MM:SS,mmm").
+Claude читает этот SRT и возвращает те же таймкоды в chunks.
+ffmpeg ожидает точку ("HH:MM:SS.mmm") — с запятой падает "Invalid duration".
+**Исправление:** `.replace(",", ".")` на start/end перед ffmpeg cmd.
+Плюс assertion guard: `re.search(r'\d,\d', arg)` перед subprocess.run.
+**Затронутые форматы:** только `fmt_cut_srt` (Нарезка + SRT).
+
 ## v1.2.0 Global -- Изменения
 
 ### Новые функции:
