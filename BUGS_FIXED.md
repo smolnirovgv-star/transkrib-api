@@ -88,6 +88,24 @@ supabase.auth.resetPasswordForEmail(email, {
 **Проверка:** curl /api/payments/create → если 401 invalid_credentials → ключ тестовый!
 **Никогда:** не вставлять test_... ключ в боевой Render
 
+
+### 11. CUT-регрессия: int path + ffmpeg args parsing (24.04.2026)
+**Когда:** feat(resize) 23.04.2026 — после переделки chunks и /tmp-файлов
+**Bug #1:** `[CUT] exception: expected str, bytes or os.PathLike object, not int`
+**Причина:** Claude иногда возвращает start_time/end_time как `int` (секунды), а не строку "HH:MM:SS".
+`subprocess.run` с `list` падает если элемент `int`.
+**Исправление:** `start = str(chunk.get("start_time") or "00:00:00")`
+
+**Bug #2:** `Error parsing options for output file /tmp/..._seg0.mp4`
+**Причина:** `chunk.get("start_time", default)` возвращает `None` если ключ существует но значение None.
+ffmpeg получает пустой/None аргумент для -ss/-to.
+**Исправление:** то же — `or "00:00:00"` перехватывает оба случая (None и пустая строка).
+
+**Дополнительно:**
+- `logger.exception` вместо `logger.error` → полный traceback в Railway logs
+- ffmpeg cmd логируется перед каждым subprocess.run
+- `tasks_store["cut_error"]` + уведомление пользователя в Telegram если нарезка упала
+
 ## v1.2.0 Global -- Изменения
 
 ### Новые функции:
