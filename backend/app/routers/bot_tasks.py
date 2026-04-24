@@ -731,7 +731,7 @@ def _download_video_cobalt(url: str, task_id: str):
             return None
         logger.info("[COBALT] got direct URL, downloading...")
     except Exception as e:
-        logger.error("[COBALT] API request failed: %s", e)
+        logger.error("[COBALT] API request failed: %s", e, exc_info=True)
         return None
 
     try:
@@ -759,7 +759,7 @@ def _download_video_cobalt(url: str, task_id: str):
             return None
         return output_path
     except Exception as e:
-        logger.error("[COBALT] download exception: %s", e)
+        logger.error("[COBALT] download exception: %s", e, exc_info=True)
         if os.path.exists(output_path):
             os.remove(output_path)
         return None
@@ -859,7 +859,7 @@ async def _download_video_rapidapi(url: str, out_path: str, task_id: str) -> boo
             return True
 
     except Exception as e:
-        logger.warning("[rapidapi] failed: %s", str(e)[:200])
+        logger.warning("[rapidapi] failed: %s", str(e)[:200], exc_info=True)
         return False
 
 
@@ -988,13 +988,13 @@ async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
         logger.info("download_youtube: trying pytubefix")
         await asyncio.wait_for(
             asyncio.to_thread(_download_video_pytubefix, url, out_path),
-            timeout=60
+            timeout=120
         )
         logger.info("download_youtube: pytubefix OK")
         return {"ok": True, "method": "pytubefix", "path": out_path}
     except asyncio.TimeoutError:
-        logger.warning("[download_youtube] pytubefix timeout after 60s, moving to next fallback")
-        errors.append("pytubefix: timeout 60s")
+        logger.warning("[download_youtube] pytubefix timeout after 120s, moving to next fallback")
+        errors.append("pytubefix: timeout 120s")
     except Exception as e:
         logger.warning("download_youtube: pytubefix failed: %r", e)
         errors.append(f"pytubefix: {e}")
