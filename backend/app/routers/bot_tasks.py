@@ -356,13 +356,13 @@ def cut_video_with_ffmpeg(
 
     try:
         for i, chunk in enumerate(included):
-            start = chunk.get("start_time", "00:00:00")
-            end = chunk.get("end_time", "00:00:00")
+            start = str(chunk.get("start_time") or "00:00:00")
+            end = str(chunk.get("end_time") or "00:00:00")
             seg_path = f"/tmp/{task_id}_seg{i}.mp4"
 
             cmd = [
                 "ffmpeg", "-y",
-                "-i", video_path,
+                "-i", str(video_path),
                 "-ss", start,
                 "-to", end,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "28",
@@ -371,9 +371,10 @@ def cut_video_with_ffmpeg(
                 seg_path
             ]
 
+            logger.info("[CUT] %s: seg%d cmd: %s", task_id, i, " ".join(cmd))
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             if result.returncode != 0:
-                logger.error("[CUT] ffmpeg seg %d failed: %s", i, result.stderr[-200:])
+                logger.error("[CUT] ffmpeg seg %d failed: %s", i, result.stderr[-500:])
                 continue
 
             if _os.path.exists(seg_path) and _os.path.getsize(seg_path) > 0:
@@ -402,6 +403,7 @@ def cut_video_with_ffmpeg(
             "-pix_fmt", "yuv420p",
             output_path
         ]
+        logger.info("[CUT] %s: concat cmd: %s", task_id, " ".join(cmd_concat))
         result = subprocess.run(cmd_concat, capture_output=True, text=True, timeout=120)
 
         if result.returncode != 0:
@@ -415,7 +417,7 @@ def cut_video_with_ffmpeg(
         return True
 
     except Exception as e:
-        logger.error("[CUT] %s: exception: %s", task_id, e)
+        logger.exception("[CUT] %s: exception in cut_video_with_ffmpeg", task_id)
         return False
     finally:
         for sp in segment_paths:
@@ -1637,6 +1639,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     logger.info("[CUT] %s: video ready at %s", task_id, output_video)
                 else:
                     logger.error("[CUT] %s: video cutting failed", task_id)
+                    tasks_store[task_id]["cut_error"] = (
+                        "⚠️ Не удалось нарезать видео. Транскрипт/SRT выше готовы. "
+                        "Попробуйте ещё раз или пришлите другой URL."
+                    )
 
                 try: os.remove(video_path)
                 except: pass
