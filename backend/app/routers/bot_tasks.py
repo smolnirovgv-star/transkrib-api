@@ -356,8 +356,9 @@ def cut_video_with_ffmpeg(
 
     try:
         for i, chunk in enumerate(included):
-            start = str(chunk.get("start_time") or "00:00:00")
-            end = str(chunk.get("end_time") or "00:00:00")
+            # SRT timestamps use comma as decimal sep ("00:02:54,264") — ffmpeg needs dot
+            start = str(chunk.get("start_time") or "00:00:00").replace(",", ".")
+            end = str(chunk.get("end_time") or "00:00:00").replace(",", ".")
             seg_path = f"/tmp/{task_id}_seg{i}.mp4"
 
             cmd = [
@@ -370,6 +371,12 @@ def cut_video_with_ffmpeg(
                 "-avoid_negative_ts", "1",
                 seg_path
             ]
+
+            # Guard: ensure no SRT-style comma in any ffmpeg arg
+            for _arg in cmd:
+                if re.search(r'\d,\d', str(_arg)):
+                    logger.error("[CUT] %s: SRT comma in ffmpeg arg %r — aborting seg %d", task_id, _arg, i)
+                    continue
 
             logger.info("[CUT] %s: seg%d cmd: %s", task_id, i, " ".join(cmd))
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
