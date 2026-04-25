@@ -17,6 +17,7 @@ _Обновлено: 2026-04-25_
 - Username test: @transkrib_test_bot
 
 **TranskribAdmin_Bot** (отдельный) — мониторинг, статус, watchdog.
+- watchdog: периодически читает task_metrics, алертит в ADMIN_ID при падении метрик ниже 90% (edge-trigger); данные из Supabase.task_metrics
 - Username: @TranskribAdmin_Bot
 - ADMIN_ID: 5052641158
 

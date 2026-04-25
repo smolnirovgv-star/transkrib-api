@@ -8,7 +8,7 @@ _Обновлено: 2026-04-25_
 1. ✅ YouTube cookies (Railway YOUTUBE_COOKIES_B64 + duration-check fix, коммит a07ad17)
 2. ✅ Uniform-cut fallback (коммит e675f13)
 3. ✅ Copyright detect-and-fallback для форматтера (6676fa9)
-4. ⏳ Admin watchdog (метрики через @TranskribAdmin_Bot)
+4. ✅ Admin watchdog (метрики через @TranskribAdmin_Bot) (2176af6)
 
 ## Тарифы (test-ветка, не в prod пока)
 

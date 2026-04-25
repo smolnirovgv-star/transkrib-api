@@ -67,3 +67,18 @@ _Обновлено: 2026-04-25_
 ### transkrib-bot
 - stable-intermediate-2026-04-25 (695b73a) — после фиксов cut-регрессии
 - epoch/production-2026-04-22 (8efd84d)
+## 2026-04-25 — Admin watchdog MVP
+
+**Решение**: Watchdog живёт в transkrib-admin-bot как async job каждый час. Метрики из Supabase task_metrics. Edge-trigger алерты в ADMIN_ID при падении <90% (cut/download/overall) или превышении >30% (uniform_fallback/copyright_fallback). Recovery-сообщение при возврате в норму.
+
+**Почему**:
+- Admin-bot изолирован от прод-сервисов (отказоустойчивость)
+- task_metrics одна таблица одна строка на задачу = простое агрегирование
+- Edge-trigger вместо периодического алерта = нет спама при стабильной проблеме
+- In-memory state без персистентности = после рестарта может прислать дубль алерта (это OK для MVP)
+
+**Что не вошло в MVP** (на будущее):
+- Auto-failover через таблицу download_config (выключение метода динамически)
+- 5-method healthcheck с пинговым видео
+- Персистентность watchdog state в БД
+- Запись в task_metrics из transkrib-api — это отдельный коммит после данной задачи
