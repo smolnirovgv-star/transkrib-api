@@ -1369,6 +1369,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
     raw_text = None
+    import time as _t_mod
+    from app.services.metrics import record_task_metric
+    _m_start = _t_mod.time()
+    _m_dl = None   # download_method
+    _m_cut = None  # cut_status
+    _m_fmt = None  # formatter_status
+    _m_final = "unknown"
     try:
         tasks_store[task_id]["status"] = "processing"
         tasks_store[task_id]["stage"] = "downloading"
@@ -1423,6 +1430,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
                 raw_text = await asyncio.to_thread(_get_transcript_supadata, url)
                 logger.info("[SUPADATA] %s: SUCCESS! Got %d chars", task_id, len(raw_text))
+                _m_dl = "supadata"
                 tasks_store[task_id]["debug_log"] = "supadata: SUCCESS"
             except Exception as es:
                 logger.warning("[SUPADATA] %s: failed: %s — trying transcript-api", task_id, es)
@@ -1441,6 +1449,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     _get_youtube_transcript, url, language or "ru"
                 )
                 logger.info("[TRANSCRIPT-API] %s: SUCCESS! Got %d chars", task_id, len(raw_text))
+                _m_dl = "supadata"  # transcript via API
                 tasks_store[task_id]["debug_log"] = "transcript-api: SUCCESS"
             except Exception as et:
                 logger.warning("[TRANSCRIPT-API] %s: failed: %s — falling back to audio download", task_id, et)
@@ -1464,6 +1473,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     timeout=DOWNLOAD_TIMEOUT,
                 )
                 logger.info("[bot_tasks] %s: yt-dlp OK", task_id)
+                _m_dl = "yt_dlp"
             except Exception as e1:
                 ytdlp_error = e1
                 logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
@@ -1479,6 +1489,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 if dl_result["ok"]:
                     mp4_path = dl_result["path"]
                     logger.info("[bot_tasks] %s: download_youtube OK via %s", task_id, dl_result["method"])
+                    _m_dl = dl_result.get("method", "yt_dlp")
                     # Extract audio from mp4 via ffmpeg
                     try:
                         import subprocess
@@ -1509,6 +1520,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
             # Если ничего не помогло — человечное сообщение
             if not download_result:
+                _m_dl = "all_failed"
+                _m_final = "download_failed"
                 logger.error("[bot_tasks] %s: all download methods failed", task_id)
                 if is_youtube:
                     raise Exception(
@@ -1594,6 +1607,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Step 3: Format with Claude (skip for SRT - return raw timestamps)
         if output_format == "srt":
             logger.info("[bot_tasks] %s: SRT format - skipping Claude, returning raw SRT", task_id)
+            _m_fmt = "not_requested"
             tasks_store[task_id]["transcription"] = raw_text
         else:
             # Убираем артефакты Whisper ">>" (маркер смены говорящего)
@@ -1602,6 +1616,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             tasks_store[task_id]["stage"] = "formatting"
             logger.info("[bot_tasks] %s: formatting with Claude...", task_id)
             formatted_text, inp_tok, out_tok, cost = await format_transcription_with_claude(raw_text)
+            # Track formatter status
+            if inp_tok > 0 or out_tok > 0:
+                _m_fmt = "success"
+            elif "⚠" in formatted_text[:5]:  # copyright fallback prefix
+                _m_fmt = "copyright_fallback"
+            else:
+                _m_fmt = "error"
             logger.info(
                 "[bot_tasks] %s: formatting done (%d chars)", task_id, len(formatted_text)
             )
@@ -1673,6 +1694,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             _chunks_valid = _is_valid_chunks(chunks, _duration)
             # DBG-C: validator result
             logger.info("[CUT] %s: DBG-C validator_result=%s", task_id, _chunks_valid)
+            _m_cut = "success" if _chunks_valid else None
             if not _chunks_valid:
                 logger.info("[CUT] %s: validator REJECTED chunks (count=%d), examples: %s",
                             task_id, len(chunks) if chunks else 0, chunks[:3])
@@ -1680,6 +1702,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                             task_id, _duration, cut_min_val)
                 chunks = generate_uniform_chunks(_duration, cut_min_val)
                 logger.info("[CUT] %s: uniform-cut chunks generated: %s", task_id, chunks)
+                _m_cut = "uniform_fallback"
 
             # Если нет chunks из анализа — нарезка по равным интервалам
             if not chunks:
@@ -1789,6 +1812,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                     logger.info("[CUT] %s: video ready at %s", task_id, output_video)
                 else:
                     logger.error("[CUT] %s: video cutting failed", task_id)
+                    _m_cut = "failed"
                     tasks_store[task_id]["cut_error"] = (
                         "⚠️ Не удалось нарезать видео. Транскрипт/SRT выше готовы. "
                         "Попробуйте ещё раз или пришлите другой URL."
@@ -1797,9 +1821,11 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 try: os.remove(video_path)
                 except: pass
 
+        _m_final = "success"
         tasks_store[task_id]["status"] = "done"
 
     except asyncio.TimeoutError:
+        _m_final = "download_failed"
         logger.error("[bot_tasks] %s: TIMEOUT during download", task_id)
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = "Timeout: download took too long"
@@ -1808,6 +1834,18 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         tasks_store[task_id]["status"] = "error"
         tasks_store[task_id]["error"] = str(e)[:500]
     finally:
+        # Record metrics to Supabase task_metrics (defensive)
+        try:
+            record_task_metric(
+                task_id=task_id,
+                final_status=_m_final,
+                cut_status=_m_cut,
+                download_method=_m_dl,
+                formatter_status=_m_fmt,
+                processing_time_sec=int(_t_mod.time() - _m_start),
+            )
+        except Exception:
+            pass  # double safety guard
         for ext in [".mp3", ".m4a", ".webm", ".opus", ""]:
             p = "/tmp/" + task_id + ext
             if os.path.exists(p):
