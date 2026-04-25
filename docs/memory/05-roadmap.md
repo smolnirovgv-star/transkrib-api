@@ -5,8 +5,8 @@ _Обновлено: 2026-04-25_
 ## Текущий фокус (апрель 2026)
 
 Стабилизация бота:
-1. ✅ YouTube cookies (Railway YOUTUBE_COOKIES_B64 + duration-check fix)
-2. 🚧 Uniform-cut fallback (в работе)
+1. ✅ YouTube cookies (Railway YOUTUBE_COOKIES_B64 + duration-check fix, коммит a07ad17)
+2. ✅ Uniform-cut fallback (коммит e675f13)
 3. ⏳ Copyright detect-and-fallback для форматтера
 4. ⏳ Admin watchdog (метрики через @TranskribAdmin_Bot)
 
