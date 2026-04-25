@@ -57,3 +57,12 @@ _Обновлено: 2026-04-25_
 ## Платежи
 
 ЮKassa ShopID 1302226, одобрена. См. 05-roadmap.md тарифы.
+
+## Метрики
+
+После каждой задачи transkrib-api пишет одну строку в Supabase task_metrics:
+- final_status, cut_status, download_method, formatter_status, processing_time_sec
+- task_id как PK с upsert (защита от двойной записи при ретрае)
+- Запись в finally-блоке run_transcription (срабатывает всегда: успех ИЛИ ошибка)
+- Все ошибки записи идут в logger.warning, не блокируют основную обработку
+- Метрики потребляет watchdog в transkrib-admin-bot (interval=3600s, edge-trigger при <90%)

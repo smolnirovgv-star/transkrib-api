@@ -82,3 +82,13 @@ _Обновлено: 2026-04-25_
 - 5-method healthcheck с пинговым видео
 - Персистентность watchdog state в БД
 - Запись в task_metrics из transkrib-api — это отдельный коммит после данной задачи
+
+## 2026-04-25 — Запись метрик из transkrib-api в task_metrics (92536ff)
+
+**Решение**: Новый app/services/metrics.py. Вызов record_task_metric() в finally-блоке run_transcription. Запись через Supabase upsert в task_metrics.
+
+**Почему**:
+- finally гарантирует запись в любом случае (успех, таймаут, исключение)
+- Двойная защита: try/except внутри finally + внутри record_task_metric
+- upsert защищает от дублей при ретраях
+- SUPABASE_URL/KEY опциональны: если нет — _get_client() логирует warning и возвращает None

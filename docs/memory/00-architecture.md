@@ -47,3 +47,4 @@ _Обновлено: 2026-04-25_
 ## Стабильные теги
 
 См. 07-decisions-log.md для актуального списка epoch/* и stable-* тегов.
+- app/services/metrics.py: defensive Supabase writer; called in finally block of run_transcription after every task regardless of outcome
