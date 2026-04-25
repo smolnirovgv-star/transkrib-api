@@ -122,6 +122,13 @@ ffmpeg ожидает точку ("HH:MM:SS.mmm") — с запятой пада
 **Исправление:** добавлен вызов `_get_cookie_file()` перед duration check; если cookies доступны — передаются в `_dur_opts["cookiefile"]`.
 **Файл:** `app/routers/bot_tasks.py` (~строка 1271).
 
+### 14. Uniform-cut fallback когда Claude-selection возвращает невалидные сегменты (25.04.2026)
+**Симптом:** при коротких видео (<30 сек), зашумлённом аудио или ошибках Claude — segments содержали невалидные timestamps (start >= end, end > duration, пустой список). Pipeline доходил до ffmpeg, который падал на всех сегментах, и пользователь получал "⚠️ Не удалось нарезать видео".
+**Триггер fallback:** `_is_valid_chunks(chunks, duration)` возвращает False если: `len(chunks) < 2`, `start < 0`, `end > duration + 1`, `start >= end`, или chunks пустой.
+**Поведение:** при невалидных сегментах pipeline молча переключается на равномерную нарезку: N кусков по cut_min_val минут с начала видео, последний усечённый (`math.ceil(duration / chunk_sec)`). UX идентичен нормальному пути — пользователь получает видео без предупреждений.
+**Логирование:** `[CUT] {task_id}: uniform-cut fallback triggered, chunks_received=N, duration=S` для мониторинга процента срабатываний.
+**Добавлено:** функции `_is_valid_chunks`, `_fmt_ts`, `generate_uniform_chunks` в `app/routers/bot_tasks.py`.
+
 ## v1.2.0 Global -- Изменения
 
 ### Новые функции:

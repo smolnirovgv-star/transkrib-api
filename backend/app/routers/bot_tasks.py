@@ -434,6 +434,49 @@ def cut_video_with_ffmpeg(
         except: pass
 
 
+def _is_valid_chunks(chunks: list, duration: float) -> bool:
+    """Check that Claude-selection returned a usable list of segments."""
+    if not chunks or len(chunks) < 2:
+        return False
+    for ch in chunks:
+        try:
+            def _to_sec(t):
+                t = str(t or "0").replace(",", ".")
+                parts = t.split(":")
+                if len(parts) == 3:
+                    return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+                return float(t)
+            start = _to_sec(ch.get("start_time"))
+            end = _to_sec(ch.get("end_time"))
+        except (ValueError, TypeError):
+            return False
+        if start < 0 or end > duration + 1 or start >= end:
+            return False
+    return True
+
+
+def _fmt_ts(s: float) -> str:
+    s = int(s)
+    return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+
+def generate_uniform_chunks(duration: float, cut_min_val: int) -> list:
+    """N equal chunks of cut_min_val minutes, last one truncated."""
+    import math
+    chunk_sec = cut_min_val * 60
+    n = math.ceil(duration / chunk_sec) if duration > 0 else 3
+    result = []
+    for i in range(n):
+        start = i * chunk_sec
+        end = min(start + chunk_sec, duration)
+        result.append({
+            "start_time": _fmt_ts(start),
+            "end_time": _fmt_ts(end),
+            "include": True,
+        })
+    return result
+
+
 class TaskCreate(BaseModel):
     url: str
     cut_minutes: Optional[str] = None
@@ -1543,6 +1586,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             chunks = chunk_result.get("chunks", [])
             logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
                         task_id, len(chunks), bool(chunk_result))
+
+            # Uniform-cut fallback: если Claude вернул невалидные сегменты
+            _duration = tasks_store[task_id].get("duration_seconds", 0)
+            if not _is_valid_chunks(chunks, _duration):
+                logger.info("[CUT] %s: uniform-cut fallback triggered, chunks_received=%d, duration=%s",
+                            task_id, len(chunks) if chunks else 0, _duration)
+                chunks = generate_uniform_chunks(_duration, cut_min_val)
 
             # Если нет chunks из анализа — нарезка по равным интервалам
             if not chunks:
