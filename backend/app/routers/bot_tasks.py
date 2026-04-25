@@ -185,6 +185,27 @@ def format_with_claude_sync(raw_text: str) -> tuple:
         return raw_text, 0, 0, 0.0
 
 
+def _is_formatter_refusal(data: dict, original_chunk: str) -> bool:
+    """Return True if Claude refused to format (copyright/lyrics policy)."""
+    # 1. Explicit refusal stop_reason (newer API versions)
+    if data.get("stop_reason") == "refusal":
+        return True
+    # 2. Short response containing copyright refusal markers
+    text = "".join(
+        b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"
+    )
+    text_lower = text.lower()
+    refusal_markers = [
+        "i cannot", "i can't", "i'm unable", "unable to",
+        "copyright", "lyrics", "intellectual property",
+        "я не могу", "не имею возможности",
+    ]
+    has_marker = any(m in text_lower for m in refusal_markers)
+    if has_marker and len(text) < len(original_chunk) * 0.3:
+        return True
+    return False
+
+
 async def format_transcription_with_claude(raw_text: str) -> tuple:
     """
     Async версия форматирования через Claude с поддержкой чанкинга до 30k симв.
@@ -248,6 +269,15 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
                     logger.error("[FORMAT] Claude error %d: %s", resp.status_code, resp.text[:300])
                     return raw_text, 0, 0, 0.0
                 data = resp.json()
+                if _is_formatter_refusal(data, chunk):
+                    logger.warning(
+                        "[FORMAT] chunk %d/%d: refusal detected, falling back to raw transcript",
+                        i + 1, len(chunks)
+                    )
+                    raw_prefix = "⚠️ Без форматирования (защищённый контент). Сырой транскрипт ниже:
+
+"
+                    return raw_prefix + raw_text, 0, 0, 0.0
                 text = "".join(
                     b["text"] for b in data.get("content", []) if b.get("type") == "text"
                 )
