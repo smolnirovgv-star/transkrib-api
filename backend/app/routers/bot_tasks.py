@@ -274,9 +274,7 @@ async def format_transcription_with_claude(raw_text: str) -> tuple:
                         "[FORMAT] chunk %d/%d: refusal detected, falling back to raw transcript",
                         i + 1, len(chunks)
                     )
-                    raw_prefix = "⚠️ Без форматирования (защищённый контент). Сырой транскрипт ниже:
-
-"
+                    raw_prefix = "⚠️ Без форматирования (защищённый контент). Сырой транскрипт ниже:\n\n"
                     return raw_prefix + raw_text, 0, 0, 0.0
                 text = "".join(
                     b["text"] for b in data.get("content", []) if b.get("type") == "text"
