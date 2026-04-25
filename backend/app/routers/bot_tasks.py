@@ -393,6 +393,8 @@ def cut_video_with_ffmpeg(
                     logger.error("[CUT] %s: SRT comma in ffmpeg arg %r — aborting seg %d", task_id, _arg, i)
                     continue
 
+            # DBG-E: exact start/end strings going into guard and subprocess
+            logger.info("[CUT] %s: DBG-E seg%d start=%r end=%r", task_id, i, start, end)
             # Hard guard: reject invalid ffmpeg intervals before subprocess
             try:
                 _validate_chunk_for_ffmpeg(start, end)
@@ -501,14 +503,21 @@ def _fmt_ts(s: float) -> str:
 
 
 def generate_uniform_chunks(duration: float, cut_min_val: int) -> list:
-    """N equal chunks of cut_min_val minutes, last one truncated."""
+    """N equal chunks of cut_min_val minutes, last one truncated.
+    If duration is unknown (0), generates 3 chunks of cut_min_val minutes each
+    without capping end time — produces valid non-zero intervals."""
     import math
     chunk_sec = cut_min_val * 60
-    n = math.ceil(duration / chunk_sec) if duration > 0 else 3
+    if duration > 0:
+        n = math.ceil(duration / chunk_sec)
+    else:
+        # duration unknown — generate 3 full-length chunks, no end-capping
+        n = 3
+        duration = None  # signals: don't cap end
     result = []
     for i in range(n):
         start = i * chunk_sec
-        end = min(start + chunk_sec, duration)
+        end = start + chunk_sec if duration is None else min(start + chunk_sec, duration)
         result.append({
             "start_time": _fmt_ts(start),
             "end_time": _fmt_ts(end),
@@ -1626,10 +1635,17 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             chunks = chunk_result.get("chunks", [])
             logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
                         task_id, len(chunks), bool(chunk_result))
+            # DBG-A: raw chunks from Claude
+            logger.info("[CUT] %s: DBG-A raw_chunks=%s", task_id, chunks[:3])
 
             # Uniform-cut fallback: если Claude вернул невалидные сегменты
             _duration = tasks_store[task_id].get("duration_seconds", 0)
-            if not _is_valid_chunks(chunks, _duration):
+            # DBG-B: before validator
+            logger.info("[CUT] %s: DBG-B before_validator chunks=%s duration=%s", task_id, chunks[:3], _duration)
+            _chunks_valid = _is_valid_chunks(chunks, _duration)
+            # DBG-C: validator result
+            logger.info("[CUT] %s: DBG-C validator_result=%s", task_id, _chunks_valid)
+            if not _chunks_valid:
                 logger.info("[CUT] %s: validator REJECTED chunks (count=%d), examples: %s",
                             task_id, len(chunks) if chunks else 0, chunks[:3])
                 logger.info("[CUT] %s: uniform-cut fallback STARTED, generating chunks for duration=%s, cut_min_val=%s",
@@ -1731,6 +1747,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
             if video_path and os.path.exists(video_path):
                 output_video = f"/tmp/{task_id}_cut.mp4"
+                # DBG-D: chunks entering cut_video_with_ffmpeg
+                logger.info("[CUT] %s: DBG-D pre_ffmpeg chunks=%s", task_id, chunks[:3])
                 success = await asyncio.to_thread(
                     cut_video_with_ffmpeg,
                     video_path,

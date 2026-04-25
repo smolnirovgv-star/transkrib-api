@@ -139,6 +139,12 @@ ffmpeg ожидает точку ("HH:MM:SS.mmm") — с запятой пада
 3. Расширено логирование call-site: `validator REJECTED chunks`, `uniform-cut fallback STARTED`, `uniform-cut chunks generated`.
 4. Добавлена функция `_validate_chunk_for_ffmpeg(start_str, end_str)` — жёсткий guard перед каждым `subprocess.run` в `cut_video_with_ffmpeg`. Если `e<=s` или `e<=0` — бросает `ValueError`, сегмент пропускается через `continue`.
 
+### 16. generate_uniform_chunks(duration=0) генерировал мусорные chunks с end=0 (25.04.2026)
+**Логи:** `ffmpeg guard rejected seg N: Invalid ffmpeg interval: ss=00:05:00 >= to=00:00:00`
+**Причина:** Когда `duration_seconds=0` (yt-dlp не вернул длину видео), `generate_uniform_chunks` вычислял `end = min(start + chunk_sec, 0) = 0` для всех чанков. Validator правильно отбраковывал Claude-chunks и вызывал fallback, но fallback генерировал невалидные chunks. ffmpeg guard ловил их и пропускал все сегменты → `no segments created`.
+**Исправление:** В `generate_uniform_chunks`: если `duration <= 0` — устанавливаем `duration = None` и вычисляем `end = start + chunk_sec` без `min`-ограничения. Генерирует 3 полных куска по `cut_min_val` минут с корректными timestamps.
+**Добавлено:** 5 DEBUG-логов (DBG-A..E) для трассировки pipeline от Claude-chunks до ffmpeg.
+
 ## v1.2.0 Global -- Изменения
 
 ### Новые функции:
