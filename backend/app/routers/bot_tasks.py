@@ -1268,9 +1268,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Check video duration before processing
         try:
             import yt_dlp as ytdlp
-            with ytdlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+            _dur_cookies = _get_cookie_file()
+            _dur_opts = {"quiet": True, "skip_download": True}
+            if _dur_cookies:
+                _dur_opts["cookiefile"] = _dur_cookies
+            with ytdlp.YoutubeDL(_dur_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-                duration = info.get("duration", 0)
+                duration = info.get("duration", 0) or 0
                 tasks_store[task_id]["duration_seconds"] = duration
                 logger.info("[DURATION] Video duration: %d seconds (%.1f hours)", duration, duration / 3600)
                 if duration > 3 * 3600:  # > 3 hours
