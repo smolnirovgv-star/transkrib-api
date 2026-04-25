@@ -335,6 +335,21 @@ def _select_chunks_with_claude(
         return {"error": str(e)}
 
 
+def _validate_chunk_for_ffmpeg(start_str, end_str):
+    """Hard last-check before subprocess.run. Raises ValueError if interval is invalid."""
+    def _parse(ts):
+        parts = str(ts).replace(",", ".").split(":")
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        return float(parts[0])
+    s = _parse(start_str)
+    e = _parse(end_str)
+    if e <= s:
+        raise ValueError(f"Invalid ffmpeg interval: ss={start_str} >= to={end_str}")
+    if e <= 0 or s < 0:
+        raise ValueError(f"Invalid ffmpeg timestamps: ss={start_str}, to={end_str}")
+
+
 def cut_video_with_ffmpeg(
     video_path: str,
     chunks: list,
@@ -377,6 +392,13 @@ def cut_video_with_ffmpeg(
                 if re.search(r'\d,\d', str(_arg)):
                     logger.error("[CUT] %s: SRT comma in ffmpeg arg %r — aborting seg %d", task_id, _arg, i)
                     continue
+
+            # Hard guard: reject invalid ffmpeg intervals before subprocess
+            try:
+                _validate_chunk_for_ffmpeg(start, end)
+            except ValueError as _e_guard:
+                logger.error("[CUT] %s: ffmpeg guard rejected seg %d: %s", task_id, i, _e_guard)
+                continue
 
             logger.info("[CUT] %s: seg%d cmd: %s", task_id, i, " ".join(cmd))
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
@@ -434,24 +456,42 @@ def cut_video_with_ffmpeg(
         except: pass
 
 
+def _ts_to_sec(t) -> float:
+    """Parse 'HH:MM:SS[.mmm]' or plain float string to seconds."""
+    t = str(t or "0").replace(",", ".")
+    parts = t.split(":")
+    if len(parts) == 3:
+        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+    return float(t)
+
+
 def _is_valid_chunks(chunks: list, duration: float) -> bool:
     """Check that Claude-selection returned a usable list of segments."""
     if not chunks or len(chunks) < 2:
+        logger.debug("[CUT] _is_valid_chunks: rejected — count=%d < 2", len(chunks) if chunks else 0)
         return False
     for ch in chunks:
         try:
-            def _to_sec(t):
-                t = str(t or "0").replace(",", ".")
-                parts = t.split(":")
-                if len(parts) == 3:
-                    return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-                return float(t)
-            start = _to_sec(ch.get("start_time"))
-            end = _to_sec(ch.get("end_time"))
-        except (ValueError, TypeError):
+            start = _ts_to_sec(ch.get("start_time"))
+            end = _ts_to_sec(ch.get("end_time"))
+        except (ValueError, TypeError) as e:
+            logger.debug("[CUT] _is_valid_chunks: parse error chunk=%s: %s", ch, e)
             return False
-        if start < 0 or end > duration + 1 or start >= end:
+        reasons = []
+        if start < 0:
+            reasons.append(f"start<0 ({start})")
+        if end <= 0:
+            reasons.append(f"end<=0 ({end})")
+        if start >= end:
+            reasons.append(f"start>=end ({start}>={end})")
+        if end - start < 1:
+            reasons.append(f"duration<1s ({end - start:.2f}s)")
+        if duration > 0 and end > duration + 1:
+            reasons.append(f"end>duration+1 ({end}>{duration + 1})")
+        if reasons:
+            logger.debug("[CUT] _is_valid_chunks: chunk INVALID chunk=%s reasons=%s", ch, reasons)
             return False
+        logger.debug("[CUT] _is_valid_chunks: chunk ok start=%.1f end=%.1f duration=%.1f", start, end, duration)
     return True
 
 
@@ -1590,9 +1630,12 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             # Uniform-cut fallback: если Claude вернул невалидные сегменты
             _duration = tasks_store[task_id].get("duration_seconds", 0)
             if not _is_valid_chunks(chunks, _duration):
-                logger.info("[CUT] %s: uniform-cut fallback triggered, chunks_received=%d, duration=%s",
-                            task_id, len(chunks) if chunks else 0, _duration)
+                logger.info("[CUT] %s: validator REJECTED chunks (count=%d), examples: %s",
+                            task_id, len(chunks) if chunks else 0, chunks[:3])
+                logger.info("[CUT] %s: uniform-cut fallback STARTED, generating chunks for duration=%s, cut_min_val=%s",
+                            task_id, _duration, cut_min_val)
                 chunks = generate_uniform_chunks(_duration, cut_min_val)
+                logger.info("[CUT] %s: uniform-cut chunks generated: %s", task_id, chunks)
 
             # Если нет chunks из анализа — нарезка по равным интервалам
             if not chunks:

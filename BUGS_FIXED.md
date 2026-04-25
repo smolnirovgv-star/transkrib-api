@@ -129,6 +129,16 @@ ffmpeg ожидает точку ("HH:MM:SS.mmm") — с запятой пада
 **Логирование:** `[CUT] {task_id}: uniform-cut fallback triggered, chunks_received=N, duration=S` для мониторинга процента срабатываний.
 **Добавлено:** функции `_is_valid_chunks`, `_fmt_ts`, `generate_uniform_chunks` в `app/routers/bot_tasks.py`.
 
+### 15. _is_valid_chunks пропускал невалидные chunks → uniform-cut генерировал мусор (25.04.2026)
+**Логи:** `[CUT] seg0 cmd: ffmpeg -ss 00:00:00 -to 00:00:00` + `no segments created` + `video cutting failed`. Лог `uniform-cut fallback triggered` ОТСУТСТВОВАЛ.
+**Причина:** При `duration_seconds=0` (duration check вернул 0 до деплоя cookies-фикса) валидатор отбраковывал Claude-chunks с реальными timestamps (`end > 0+1`), fallback запускался, но `generate_uniform_chunks(0, cut_min_val)` генерировал чанки с `end = min(start+chunk_sec, 0) = 0` — невалидные для ffmpeg.
+Дополнительно: у `_is_valid_chunks` отсутствовали явные проверки `end<=0` и `end-start<1s`; `_to_sec` была определена внутри цикла.
+**Исправление:**
+1. `_ts_to_sec` вынесена на уровень модуля (не внутри цикла).
+2. `_is_valid_chunks` усилен: добавлены проверки `end<=0`, `end-start<1s`, `duration>0` guard для `end>duration+1`. Debug-логирование для каждого отбракованного чанка.
+3. Расширено логирование call-site: `validator REJECTED chunks`, `uniform-cut fallback STARTED`, `uniform-cut chunks generated`.
+4. Добавлена функция `_validate_chunk_for_ffmpeg(start_str, end_str)` — жёсткий guard перед каждым `subprocess.run` в `cut_video_with_ffmpeg`. Если `e<=s` или `e<=0` — бросает `ValueError`, сегмент пропускается через `continue`.
+
 ## v1.2.0 Global -- Изменения
 
 ### Новые функции:
