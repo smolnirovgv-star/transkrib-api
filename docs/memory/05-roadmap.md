@@ -7,7 +7,7 @@ _Обновлено: 2026-04-25_
 Стабилизация бота:
 1. ✅ YouTube cookies (Railway YOUTUBE_COOKIES_B64 + duration-check fix, коммит a07ad17)
 2. ✅ Uniform-cut fallback (коммит e675f13)
-3. ⏳ Copyright detect-and-fallback для форматтера
+3. ✅ Copyright detect-and-fallback для форматтера (6676fa9)
 4. ⏳ Admin watchdog (метрики через @TranskribAdmin_Bot)
 
 ## Тарифы (test-ветка, не в prod пока)
