@@ -1,6 +1,15 @@
 # Roadmap
 
-_Обновлено: 2026-04-25_
+_Обновлено: 2026-04-26_
+
+## ✅ v1.0.0 RELEASED — 26.04.2026
+
+Релиз зафиксирован тегом v1.0.0 в repo transkrib-api, transkrib-bot, transkrib-admin-bot.
+Snapshot: docs/memory/08-release-v1.0.0.md
+
+Все 4 пункта плана стабилизации (cookies / uniform-cut / copyright-fallback / watchdog) — закрыты, протестированы в проде.
+
+Следующий цикл (post-v1.0.0) начинается с balances monitoring в admin-bot — см. 08-release-v1.0.0.md → Roadmap.
 
 ## Текущий фокус (апрель 2026)
 
