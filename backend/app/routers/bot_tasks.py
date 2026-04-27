@@ -1477,18 +1477,70 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             download_result = None
             ytdlp_error = None
 
+            # Level 0: Прямой путь для Telegram CDN URL (загрузки от test-бота)
+            # Telegram CDN не понимается yt-dlp как видео-источник —
+            # скачиваем напрямую через httpx, конвертим в mp3 для Whisper.
+            if "api.telegram.org/file/bot" in url:
+                audio_path = f"/tmp/{task_id}.mp3"
+                mp4_path = f"/tmp/{task_id}.mp4"
+                try:
+                    logger.info(
+                        "[bot_tasks] %s: telegram CDN direct download starting (url=%s)",
+                        task_id, _mask_telegram_token(url)
+                    )
+                    async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+                        async with client.stream("GET", url) as resp:
+                            resp.raise_for_status()
+                            with open(mp4_path, "wb") as f:
+                                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                                    f.write(chunk)
+                    file_size = os.path.getsize(mp4_path)
+                    logger.info(
+                        "[bot_tasks] %s: telegram CDN downloaded %d bytes to %s",
+                        task_id, file_size, mp4_path
+                    )
+                    if file_size == 0:
+                        raise Exception("Telegram CDN returned 0 bytes")
+
+                    # Извлекаем аудио через ffmpeg (как в существующем коде ниже)
+                    import subprocess
+                    result = subprocess.run(
+                        ["ffmpeg", "-y", "-i", mp4_path, "-vn",
+                         "-acodec", "libmp3lame", "-b:a", "128k",
+                         "-ar", "16000", "-ac", "1", audio_path],
+                        capture_output=True, text=True, timeout=180
+                    )
+                    if result.returncode == 0 and os.path.exists(audio_path):
+                        download_result = audio_path
+                        _m_dl = "telegram_direct"
+                        logger.info(
+                            "[bot_tasks] %s: telegram CDN audio extracted OK -> %s",
+                            task_id, audio_path
+                        )
+                    else:
+                        logger.error(
+                            "[bot_tasks] %s: telegram CDN ffmpeg failed: %s",
+                            task_id, result.stderr[:300]
+                        )
+                except Exception as e_tg:
+                    logger.error(
+                        "[bot_tasks] %s: telegram CDN download failed: %s",
+                        task_id, _mask_telegram_token(str(e_tg))
+                    )
+
             # Level 1: yt-dlp (всегда пробуем первым — быстрее для Rutube/VK)
-            try:
-                download_result = await asyncio.wait_for(
-                    asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
-                    timeout=DOWNLOAD_TIMEOUT,
-                )
-                logger.info("[bot_tasks] %s: yt-dlp OK", task_id)
-                _m_dl = "yt_dlp"
-            except Exception as e1:
-                ytdlp_error = e1
-                logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
-                tasks_store[task_id]["debug_log"] = f"yt-dlp FAILED: {str(e1)[:200]}"
+            if not download_result:
+                try:
+                    download_result = await asyncio.wait_for(
+                        asyncio.to_thread(_download_with_ytdlp, url, task_id, cookies_file),
+                        timeout=DOWNLOAD_TIMEOUT,
+                    )
+                    logger.info("[bot_tasks] %s: yt-dlp OK", task_id)
+                    _m_dl = "yt_dlp"
+                except Exception as e1:
+                    ytdlp_error = e1
+                    logger.warning("[bot_tasks] %s: yt-dlp failed: %s", task_id, e1)
+                    tasks_store[task_id]["debug_log"] = f"yt-dlp FAILED: {str(e1)[:200]}"
 
             # Level 2+: download_youtube fallback (только для YouTube)
             if not download_result and is_youtube:
