@@ -24,6 +24,17 @@ logger = logging.getLogger(__name__)
 from collections import deque
 _LOG_BUFFER = deque(maxlen=500)
 
+
+def _mask_telegram_token(url: str) -> str:
+    """Mask BOT_TOKEN in Telegram CDN URLs to prevent token leakage in logs.
+    Pattern: /bot<digits>:<token>/ -> /bot***MASKED***/
+    Non-Telegram URLs returned unchanged.
+    """
+    if not url or "api.telegram.org" not in url:
+        return url
+    return re.sub(r'/bot\d+:[\w-]+/', '/bot***MASKED***/', url)
+
+
 class _BufferHandler(logging.Handler):
     def emit(self, record):
         _LOG_BUFFER.append({
@@ -674,7 +685,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     """Level 1: yt-dlp download. video_needed=True скачивает видео+аудио для нарезки."""
     import glob
     import yt_dlp
-    print(f"=== DOWNLOAD FUNCTION yt-dlp: {url} ===")
+    print(f"=== DOWNLOAD FUNCTION yt-dlp: {_mask_telegram_token(url)} ===")
     logger.info("[bot_tasks] yt-dlp version: %s", yt_dlp.version.__version__)
 
     output_template = "/tmp/" + task_id + ".%(ext)s"
@@ -735,7 +746,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
     }
     logger.info("[DOWNLOAD] Using format: %s", ydl_opts.get("format"))
 
-    logger.info("[DOWNLOAD] Starting yt-dlp for: %s", url)
+    logger.info("[DOWNLOAD] Starting yt-dlp for: %s", _mask_telegram_token(url))
     logger.info("[DOWNLOAD] Output template: %s", output_template)
 
     # Log available formats before download
@@ -825,7 +836,7 @@ def _download_video_cobalt(url: str, task_id: str):
     import shutil
     output_path = f"/tmp/{task_id}_video.mp4"
 
-    logger.info("[COBALT] %s: requesting video URL for: %s", task_id, url[:80])
+    logger.info("[COBALT] %s: requesting video URL for: %s", task_id, _mask_telegram_token(url[:80]))
 
     cobalt_url = os.getenv("COBALT_API_URL", "https://api.cobalt.tools/").rstrip("/") + "/"
     try:
@@ -915,7 +926,7 @@ async def _download_video_rapidapi(url: str, out_path: str, task_id: str) -> boo
 
     video_id = _extract_youtube_id(url)
     if not video_id:
-        logger.warning("[rapidapi] failed to extract video_id from: %s", url)
+        logger.warning("[rapidapi] failed to extract video_id from: %s", _mask_telegram_token(url))
         return False
 
     api_url = "https://youtube-media-downloader.p.rapidapi.com/v2/video/details"
@@ -932,7 +943,7 @@ async def _download_video_rapidapi(url: str, out_path: str, task_id: str) -> boo
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
-            logger.info("[rapidapi] requesting video details for: %s (videoId=%s)", url, video_id)
+            logger.info("[rapidapi] requesting video details for: %s (videoId=%s)", _mask_telegram_token(url), video_id)
             resp = await client.get(api_url, headers=headers, params=params)
 
             if resp.status_code != 200:
@@ -1021,7 +1032,7 @@ def _prepare_ytdlp_cookies() -> Optional[str]:
 def _download_video_pytubefix(url: str, out_path: str) -> None:
     """Download YouTube video via pytubefix (no cookies, no proxy)."""
     from pytubefix import YouTube
-    logger.info("[pytubefix] requesting: %s", url)
+    logger.info("[pytubefix] requesting: %s", _mask_telegram_token(url))
     proxy_url = os.environ.get(
         "WEBSHARE_PROXY",
         "http://tnylobxq-rotate:8hj6ju41jo98@p.webshare.io:80/"
@@ -1068,7 +1079,7 @@ async def _download_video_supadata(url: str, out_path: str, task_id: str) -> boo
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
-            logger.info("[supadata] requesting MP4 for: %s", url)
+            logger.info("[supadata] requesting MP4 for: %s", _mask_telegram_token(url))
             resp = await client.get(api_url, headers=headers, params=params)
 
             if resp.status_code != 200:
@@ -1298,7 +1309,7 @@ def _get_transcript_supadata(url: str) -> str:
     encoded_url = urllib.parse.quote(url, safe="")
     api_url = f"https://api.supadata.ai/v1/transcript?url={encoded_url}&text=true"
 
-    logger.info("[SUPADATA] Fetching transcript for: %s", url[:80])
+    logger.info("[SUPADATA] Fetching transcript for: %s", _mask_telegram_token(url[:80]))
     resp = requests.get(api_url, headers={"x-api-key": api_key}, timeout=30)
 
     if resp.status_code != 200:
@@ -1365,7 +1376,7 @@ def _get_youtube_transcript(url: str, lang: str = "ru") -> str:
 
 async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
     print("=== RUN_TRANSCRIPTION CALLED ===")
-    print(f"=== task_id={task_id} url={url} ===")
+    print(f"=== task_id={task_id} url={_mask_telegram_token(url)} ===")
     audio_path = "/tmp/" + task_id + ".mp3"
     cookies_file = None
     raw_text = None
@@ -1384,10 +1395,10 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Normalize vkvideo.ru -> vk.com/video (Supadata supports vk.com but not vkvideo.ru)
         if "vkvideo.ru/video" in url:
             url = url.replace("vkvideo.ru/video", "vk.com/video")
-            logger.info("[URL] Normalized vkvideo.ru -> vk.com/video: %s", url)
+            logger.info("[URL] Normalized vkvideo.ru -> vk.com/video: %s", _mask_telegram_token(url))
             tasks_store[task_id]["url"] = url
 
-        logger.info("[bot_tasks] %s: starting for %s", task_id, url[:80])
+        logger.info("[bot_tasks] %s: starting for %s", task_id, _mask_telegram_token(url[:80]))
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
             task_id, fmt, "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text")
         output_format = "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text"  # fmt_md treated as text
@@ -1421,13 +1432,13 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             return
 
         is_youtube = "youtube.com" in url or "youtu.be" in url
-        print(f"[Download] URL: {url}, is_youtube={is_youtube}")
+        print(f"[Download] URL: {_mask_telegram_token(url)}, is_youtube={is_youtube}")
 
         # Step 1a: Try Supadata API first (works from any IP, no proxy)
         is_supadata_supported = is_youtube or "vk.com/video" in url or "vkvideo.ru" in url
         if is_supadata_supported and os.getenv("SUPADATA_API_KEY") and not raw_text and fmt not in ("fmt_srt", "fmt_cut_srt"):
             try:
-                logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, url)
+                logger.info("[SUPADATA] %s: trying Supadata for: %s", task_id, _mask_telegram_token(url))
                 raw_text = await asyncio.to_thread(_get_transcript_supadata, url)
                 logger.info("[SUPADATA] %s: SUCCESS! Got %d chars", task_id, len(raw_text))
                 _m_dl = "supadata"
@@ -1444,7 +1455,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         # Step 1b: Try YouTube Transcript API directly (fast, no audio download)
         if not raw_text and is_youtube and HAS_TRANSCRIPT_API:
             try:
-                logger.info("[TRANSCRIPT-API] %s: trying direct transcript for: %s", task_id, url)
+                logger.info("[TRANSCRIPT-API] %s: trying direct transcript for: %s", task_id, _mask_telegram_token(url))
                 raw_text = await asyncio.to_thread(
                     _get_youtube_transcript, url, language or "ru"
                 )
@@ -1728,7 +1739,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
                 is_youtube_cut = "youtube.com" in url or "youtu.be" in url
                 logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
-                            task_id, is_youtube_cut, url[:60])
+                            task_id, is_youtube_cut, _mask_telegram_token(url[:60]))
 
                 if is_youtube_cut:
                     tmp_video = f"/tmp/{task_id}.mp4"
@@ -1866,7 +1877,7 @@ async def create_task(body: TaskCreate, background_tasks: BackgroundTasks):
         body.format,
         body.language,
     )
-    logger.info("[bot_tasks] created task %s for url=%s", task_id, body.url[:60])
+    logger.info("[bot_tasks] created task %s for url=%s", task_id, _mask_telegram_token(body.url[:60]))
     return {"task_id": task_id, "status": "pending"}
 
 
