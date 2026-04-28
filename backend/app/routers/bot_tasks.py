@@ -46,6 +46,8 @@ class _BufferHandler(logging.Handler):
 _buf_handler = _BufferHandler()
 _buf_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S"))
 logging.getLogger().addHandler(_buf_handler)
+# Suppress httpx INFO logs to prevent BOT_TOKEN leakage from Telegram CDN URLs
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
