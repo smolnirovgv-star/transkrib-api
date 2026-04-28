@@ -6,6 +6,7 @@ Stage 1 — manual trigger only. No DB writes, no scheduling, no alerts.
 import asyncio
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -70,24 +71,35 @@ async def _check_yt_dlp(url: str) -> HealthResult:
 
 
 async def _check_rapidapi(url: str) -> HealthResult:
-    """Check RapidAPI: ping the endpoint with HEAD request."""
+    """Check RapidAPI YouTube Media Downloader reachability.
+    Uses the same API endpoint as production downloads (bot_tasks.py)."""
     start = time.perf_counter()
     rapidapi_key = os.getenv("RAPIDAPI_KEY")
     if not rapidapi_key:
-        return HealthResult(
-            method="rapidapi",
-            ok=False,
-            latency_ms=0,
-            error="RAPIDAPI_KEY env var missing"
-        )
+        return HealthResult(method="rapidapi", ok=False, latency_ms=0,
+                            error="RAPIDAPI_KEY env var missing")
+    # Extract video ID from URL (same logic as bot_tasks._extract_youtube_id)
+    m = re.search(
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
+        url
+    )
+    if not m:
+        return HealthResult(method="rapidapi", ok=False, latency_ms=0,
+                            error="failed to extract video_id from test URL")
+    video_id = m.group(1)
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                "https://youtube-to-mp4.p.rapidapi.com/url",
-                params={"url": url},
+                "https://youtube-media-downloader.p.rapidapi.com/v2/video/details",
+                params={
+                    "videoId": video_id,
+                    "urlAccess": "normal",
+                    "videos": "auto",
+                    "audios": "auto",
+                },
                 headers={
-                    "X-RapidAPI-Key": rapidapi_key,
-                    "X-RapidAPI-Host": "youtube-to-mp4.p.rapidapi.com",
+                    "x-rapidapi-host": "youtube-media-downloader.p.rapidapi.com",
+                    "x-rapidapi-key": rapidapi_key,
                 }
             )
         latency_ms = int((time.perf_counter() - start) * 1000)
@@ -100,12 +112,8 @@ async def _check_rapidapi(url: str) -> HealthResult:
         )
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return HealthResult(
-            method="rapidapi",
-            ok=False,
-            latency_ms=latency_ms,
-            error=str(e)[:200]
-        )
+        return HealthResult(method="rapidapi", ok=False, latency_ms=latency_ms,
+                            error=str(e)[:200])
 
 
 async def _check_cobalt(url: str) -> HealthResult:
@@ -174,27 +182,34 @@ async def _check_supadata(url: str) -> HealthResult:
 
 
 async def _check_telegram_direct() -> HealthResult:
-    """Check Telegram CDN reachability with HEAD request to a known public endpoint."""
+    """Check Telegram Bot API reachability via getMe endpoint.
+
+    This is the same API surface used by bot.py for downloading user-uploaded
+    videos via Telegram CDN URL. Uses ADMIN_BOT_TOKEN if available; falls back
+    to TELEGRAM_BOT_TOKEN. HTTP 200 = bot reachable. HTTP 401 = token wrong
+    but server alive (still ok for is API reachable check).
+    """
     start = time.perf_counter()
+    token = os.getenv("ADMIN_BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return HealthResult(method="telegram_direct", ok=False, latency_ms=0,
+                            error="No bot token in env (ADMIN_BOT_TOKEN or TELEGRAM_BOT_TOKEN)")
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get("https://api.telegram.org/")
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(f"https://api.telegram.org/bot{token}/getMe")
         latency_ms = int((time.perf_counter() - start) * 1000)
+        ok = resp.status_code in (200, 401)
         return HealthResult(
             method="telegram_direct",
-            ok=resp.status_code in (200, 404),  # 404 is OK — server reachable
+            ok=ok,
             latency_ms=latency_ms,
             bytes_downloaded=len(resp.content),
-            error=None if resp.status_code in (200, 404) else f"HTTP {resp.status_code}"
+            error=None if ok else f"HTTP {resp.status_code}"
         )
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return HealthResult(
-            method="telegram_direct",
-            ok=False,
-            latency_ms=latency_ms,
-            error=str(e)[:200]
-        )
+        return HealthResult(method="telegram_direct", ok=False, latency_ms=latency_ms,
+                            error=str(e)[:200])
 
 
 async def run_full_healthcheck(test_url: Optional[str] = None) -> dict:
