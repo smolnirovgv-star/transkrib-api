@@ -92,21 +92,3 @@ async def get_health_status(
             "p95_latency_ms": round(sorted(lats)[int(len(lats) * 0.95)]) if lats else None,
         }
     return {"window": window, "since": since, "methods": result, "total_rows": len(rows)}
-
-
-@router.post("/test-alert")
-async def test_alert(
-    x_admin_token: Optional[str] = Header(None, alias="X-Admin-Token"),
-):
-    """Temporary endpoint to test Telegram alert sending directly.
-    Remove after verification.
-    """
-    _verify_admin_token(x_admin_token)
-    from app.services.watchdog_alerts import _send_telegram
-    from datetime import datetime, timezone
-    await _send_telegram(
-        f"🧪 <b>Watchdog Test</b>\n"
-        f"Alert system working correctly.\n"
-        f"Time: {datetime.now(timezone.utc).strftime('%H:%M UTC')}"
-    )
-    return {"ok": True, "message": "test alert sent"}
