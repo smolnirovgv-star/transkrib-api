@@ -32,7 +32,7 @@ METHOD_LABELS = {
 
 async def _send_telegram(text: str) -> None:
     """Send message to admin chat via ADMIN_BOT_TOKEN. Silent on failure."""
-    token = os.getenv("ADMIN_BOT_TOKEN")
+    token = os.getenv("WATCHDOG_BOT_TOKEN") or os.getenv("ADMIN_BOT_TOKEN")
     chat_id = os.getenv("ADMIN_CHAT_ID")
     if not token or not chat_id:
         logger.warning("[watchdog_alerts] ADMIN_BOT_TOKEN or ADMIN_CHAT_ID not set — skipping alert")
