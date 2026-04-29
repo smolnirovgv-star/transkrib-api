@@ -16,3 +16,4 @@ pytubefix>=8.8.0
 groq
 ffmpeg-python
 supabase>=2.0.0
+apscheduler>=3.10.0

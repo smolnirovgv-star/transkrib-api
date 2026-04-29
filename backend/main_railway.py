@@ -18,12 +18,32 @@ logger = logging.getLogger("transkrib")
 async def lifespan(app: FastAPI):
     import asyncio as _asyncio
     from app.routers.bot_tasks import _tmp_cleanup_worker
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.services.health_monitor import run_full_healthcheck
+
     _asyncio.create_task(_tmp_cleanup_worker())
     logger.info("[startup] tmp cleanup worker started (TTL=30min)")
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        run_full_healthcheck,
+        trigger="interval",
+        minutes=15,
+        kwargs={"test_source": "scheduler"},
+        id="watchdog_healthcheck",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info("[startup] watchdog scheduler started (interval=15min)")
+
     logger.info("Transkrib API (Railway) starting...")
     logger.info("Python path: %s", os.environ.get("PYTHONPATH", "not set"))
     logger.info("PORT: %s", os.environ.get("PORT", "not set"))
+
     yield
+
+    scheduler.shutdown(wait=False)
+    logger.info("[shutdown] watchdog scheduler stopped")
     logger.info("Transkrib API shutting down")
 
 

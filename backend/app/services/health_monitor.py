@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import time
+from datetime import timezone, datetime
 from dataclasses import dataclass, asdict
 from typing import Optional
 
@@ -212,12 +213,39 @@ async def _check_telegram_direct() -> HealthResult:
                             error=str(e)[:200])
 
 
-async def run_full_healthcheck(test_url: Optional[str] = None) -> dict:
+async def _save_to_supabase(results: list, test_source: str = "scheduler") -> None:
+    """Write 5 health check rows to download_healthcheck table. Silent on failure."""
+    import os
+    from supabase import create_client
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        logger.warning("[health_monitor] SUPABASE_URL or SUPABASE_KEY not set — skipping DB write")
+        return
+    try:
+        sb = create_client(url, key)
+        rows = [
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "method": r.method,
+                "ok": r.ok,
+                "latency_ms": r.latency_ms,
+                "bytes_downloaded": r.bytes_downloaded,
+                "error_message": r.error,
+                "test_source": test_source,
+            }
+            for r in results
+        ]
+        sb.table("download_healthcheck").insert(rows).execute()
+        logger.info("[health_monitor] saved %d rows to download_healthcheck", len(rows))
+    except Exception as e:
+        logger.error("[health_monitor] failed to save to Supabase: %s", e)
+
+
+async def run_full_healthcheck(test_url=None, test_source: str = "manual") -> dict:
     """Run all 5 method checks in parallel and return aggregated report."""
     url = test_url or DEFAULT_TEST_URL
     logger.info("[health_monitor] starting full check on %s", url)
-
-    # Run all 5 checks in parallel — saves time vs sequential
     results = await asyncio.gather(
         _check_yt_dlp(url),
         _check_rapidapi(url),
@@ -226,7 +254,7 @@ async def run_full_healthcheck(test_url: Optional[str] = None) -> dict:
         _check_telegram_direct(),
         return_exceptions=False
     )
-
+    await _save_to_supabase(results, test_source=test_source)
     return {
         "ts": int(time.time()),
         "test_url": url,
