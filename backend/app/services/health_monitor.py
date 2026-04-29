@@ -255,6 +255,8 @@ async def run_full_healthcheck(test_url=None, test_source: str = "manual") -> di
         return_exceptions=False
     )
     await _save_to_supabase(results, test_source=test_source)
+    from app.services.watchdog_alerts import check_and_alert
+    await check_and_alert(results)
     return {
         "ts": int(time.time()),
         "test_url": url,
