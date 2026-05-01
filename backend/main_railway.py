@@ -19,22 +19,62 @@ async def lifespan(app: FastAPI):
     import asyncio as _asyncio
     from app.routers.bot_tasks import _tmp_cleanup_worker
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    from app.services.health_monitor import run_full_healthcheck
+    from app.services.watchdog_alerts import send_usage_report as send_usage_report_job
 
     _asyncio.create_task(_tmp_cleanup_worker())
     logger.info("[startup] tmp cleanup worker started (TTL=30min)")
 
+    # Бесплатные методы — каждые 15 минут
+    async def _check_free_methods():
+        from app.services.health_monitor import _check_yt_dlp, _check_cobalt, _check_telegram_direct, _save_to_supabase
+        from app.services.watchdog_alerts import check_and_alert
+        import asyncio
+        results = await asyncio.gather(
+            _check_yt_dlp(os.environ.get("HEALTH_TEST_YOUTUBE_URL", "https://www.youtube.com/watch?v=dQw4w9WgXcQ")),
+            _check_cobalt(os.environ.get("HEALTH_TEST_YOUTUBE_URL", "https://www.youtube.com/watch?v=dQw4w9WgXcQ")),
+            _check_telegram_direct(),
+            return_exceptions=False
+        )
+        await _save_to_supabase(list(results), test_source="scheduler_free")
+        await check_and_alert(list(results))
+
+    # Платные/лимитные методы — каждые 2 часа
+    async def _check_paid_methods():
+        from app.services.health_monitor import _check_rapidapi, _check_supadata, _save_to_supabase
+        from app.services.watchdog_alerts import check_and_alert
+        import asyncio
+        results = await asyncio.gather(
+            _check_rapidapi(os.environ.get("HEALTH_TEST_YOUTUBE_URL", "https://www.youtube.com/watch?v=dQw4w9WgXcQ")),
+            _check_supadata(os.environ.get("HEALTH_TEST_YOUTUBE_URL", "https://www.youtube.com/watch?v=dQw4w9WgXcQ")),
+            return_exceptions=False
+        )
+        await _save_to_supabase(list(results), test_source="scheduler_paid")
+        await check_and_alert(list(results))
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        run_full_healthcheck,
+        _check_free_methods,
         trigger="interval",
         minutes=15,
-        kwargs={"test_source": "scheduler"},
-        id="watchdog_healthcheck",
+        id="watchdog_free",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _check_paid_methods,
+        trigger="interval",
+        hours=2,
+        id="watchdog_paid",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        send_usage_report_job,
+        trigger="interval",
+        days=3,
+        id="usage_report",
         replace_existing=True,
     )
     scheduler.start()
-    logger.info("[startup] watchdog scheduler started (interval=15min)")
+    logger.info("[startup] watchdog scheduler started (free=15min, paid=2h, report=3d)")
 
     logger.info("Transkrib API (Railway) starting...")
     logger.info("Python path: %s", os.environ.get("PYTHONPATH", "not set"))

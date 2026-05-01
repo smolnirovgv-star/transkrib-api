@@ -122,3 +122,53 @@ async def check_and_alert(results: list) -> None:
                 await _send_telegram(text)
                 state["alerted"] = False
                 state["last_alert_ts"] = None
+
+
+
+LIMITS = {
+    "rapidapi": {"monthly": 500, "name": "RapidAPI"},
+    "supadata": {"monthly": 150, "name": "Supadata (paid ~$10/мес)"},
+    "yt_dlp": {"monthly": 999999, "name": "yt-dlp (бесплатно)"},
+    "cobalt": {"monthly": 999999, "name": "Cobalt (self-hosted)"},
+    "telegram_direct": {"monthly": 999999, "name": "Telegram Direct"},
+}
+
+
+async def send_usage_report() -> None:
+    """Send usage report every 3 days via @TranskribAdmin_Bot."""
+    import os
+    from datetime import datetime, timezone, timedelta
+    from supabase import create_client
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        return
+    try:
+        sb = create_client(url, key)
+        since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        resp = sb.table("download_healthcheck").select("method,ok").gte("ts", since).execute()
+        rows = resp.data or []
+        from collections import defaultdict
+        counts = defaultdict(lambda: {"total": 0, "ok": 0})
+        for r in rows:
+            counts[r["method"]]["total"] += 1
+            if r["ok"]:
+                counts[r["method"]]["ok"] += 1
+
+        lines = ["📊 <b>Отчёт расходов Watchdog (30 дней)</b>\n"]
+        for method, info in LIMITS.items():
+            c = counts.get(method, {"total": 0, "ok": 0})
+            total = c["total"]
+            limit = info["monthly"]
+            if limit < 999999:
+                pct = round(total / limit * 100, 1)
+                status = "🔴" if pct > 80 else "🟡" if pct > 50 else "🟢"
+                lines.append(f"{status} <b>{info['name']}</b>: {total}/{limit} ({pct}%)")
+            else:
+                lines.append(f"🟢 <b>{info['name']}</b>: {total} запросов (без лимита)")
+
+        lines.append(f"\n🕐 {datetime.now(timezone.utc).strftime('%d.%m.%Y %H:%M UTC')}")
+        await _send_telegram("\n".join(lines))
+        logger.info("[watchdog_alerts] usage report sent")
+    except Exception as e:
+        logger.error("[watchdog_alerts] usage report failed: %s", e)
