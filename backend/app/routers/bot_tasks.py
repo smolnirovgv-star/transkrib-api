@@ -1111,85 +1111,136 @@ async def _download_video_supadata(url: str, out_path: str, task_id: str) -> boo
         logger.warning("[supadata] failed: %s", str(e)[:200])
         return False
 
+async def _is_method_healthy(method: str) -> bool:
+    """Checks last 3 records. Returns True if healthy or insufficient data."""
+    import os
+    try:
+        from supabase import create_client
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        if not url or not key:
+            return True
+        sb = create_client(url, key)
+        resp = sb.table("download_healthcheck").select("ok").eq("method", method).order("ts", desc=True).limit(3).execute()
+        rows = resp.data or []
+        if len(rows) < 3:
+            return True
+        all_failed = all(not r["ok"] for r in rows)
+        if all_failed:
+            logger.warning("[auto-failover] method=%s skipped: 3 consecutive fails in Watchdog", method)
+        return not all_failed
+    except Exception as e:
+        logger.error("[auto-failover] Supabase check failed: %s", e)
+        return True
+
+
 async def download_youtube(url: str, task_id: str, out_path: str) -> dict:
-    """
-    Tries to download a YouTube video via fallback chain.
-    Returns {"ok": True, "method": "ytdlp|cobalt|rapidapi", "path": out_path}
-    or {"ok": False, "error": "..."} if all levels fail.
-    """
+    """Tries to download a YouTube video via fallback chain."""
     import glob as _glob
     errors = []
+    any_attempted = False
 
-    # Level 0: Supadata (professional YouTube downloader)
-    logger.info("download_youtube: trying supadata (Level 0)")
-    if await _download_video_supadata(url, out_path, task_id):
-        return {"ok": True, "method": "supadata", "path": out_path}
+    # Level 0: Supadata
+    if not await _is_method_healthy("supadata"):
+        logger.info("[auto-failover] supadata unhealthy, skipping")
+    else:
+        any_attempted = True
+        logger.info("download_youtube: trying supadata (Level 0)")
+        if await _download_video_supadata(url, out_path, task_id):
+            return {"ok": True, "method": "supadata", "path": out_path}
 
     # Level 1: pytubefix (не требует cookies)
-    try:
-        logger.info("download_youtube: trying pytubefix")
-        await asyncio.wait_for(
-            asyncio.to_thread(_download_video_pytubefix, url, out_path),
-            timeout=120
-        )
-        logger.info("download_youtube: pytubefix OK")
-        return {"ok": True, "method": "pytubefix", "path": out_path}
-    except asyncio.TimeoutError:
-        logger.warning("[download_youtube] pytubefix timeout after 120s, moving to next fallback")
-        errors.append("pytubefix: timeout 120s")
-    except Exception as e:
-        logger.warning("download_youtube: pytubefix failed: %r", e)
-        errors.append(f"pytubefix: {e}")
+    if not await _is_method_healthy("yt_dlp"):
+        logger.info("[auto-failover] yt_dlp unhealthy, skipping pytubefix")
+    else:
+        any_attempted = True
+        try:
+            logger.info("download_youtube: trying pytubefix")
+            await asyncio.wait_for(asyncio.to_thread(_download_video_pytubefix, url, out_path), timeout=120)
+            logger.info("download_youtube: pytubefix OK")
+            return {"ok": True, "method": "pytubefix", "path": out_path}
+        except asyncio.TimeoutError:
+            logger.warning("[download_youtube] pytubefix timeout after 120s, moving to next fallback")
+            errors.append("pytubefix: timeout 120s")
+        except Exception as e:
+            logger.warning("download_youtube: pytubefix failed: %r", e)
+            errors.append(f"pytubefix: {e}")
 
-    # Level 1: yt-dlp (with Webshare proxy + cookies)
-    try:
-        logger.info("download_youtube: trying yt-dlp")
-        cookies_file_v = _prepare_ytdlp_cookies() or _get_cookie_file()
-        logger.info("[download_youtube] yt-dlp format: best[ext=mp4][height<=720]/best[height<=720]/best[ext=mp4]/best")
-        tmp_id = task_id + "_ytdl"
-        await asyncio.wait_for(
-            asyncio.to_thread(_download_with_ytdlp, url, tmp_id, cookies_file_v, True),
-            timeout=DOWNLOAD_TIMEOUT
-        )
-        video_files = _glob.glob(f"/tmp/{tmp_id}.*")
-        if video_files:
-            import shutil as _shutil
-            _shutil.move(video_files[0], out_path)
-            logger.info("download_youtube: yt-dlp OK")
-            return {"ok": True, "method": "ytdlp", "path": out_path}
-        errors.append("ytdlp: no file produced")
-    except Exception as e:
-        logger.warning("download_youtube: yt-dlp failed: %r", e)
-        errors.append(f"ytdlp: {e}")
+    # Level 1: yt-dlp
+    if not await _is_method_healthy("yt_dlp"):
+        logger.info("[auto-failover] yt_dlp unhealthy, skipping yt-dlp")
+    else:
+        any_attempted = True
+        try:
+            logger.info("download_youtube: trying yt-dlp")
+            cookies_file_v = _prepare_ytdlp_cookies() or _get_cookie_file()
+            logger.info("[download_youtube] yt-dlp format: best[ext=mp4][height<=720]/best[height<=720]/best[ext=mp4]/best")
+            tmp_id = task_id + "_ytdl"
+            await asyncio.wait_for(asyncio.to_thread(_download_with_ytdlp, url, tmp_id, cookies_file_v, True), timeout=DOWNLOAD_TIMEOUT)
+            video_files = _glob.glob(f"/tmp/{tmp_id}.*")
+            if video_files:
+                import shutil as _shutil
+                _shutil.move(video_files[0], out_path)
+                logger.info("download_youtube: yt-dlp OK")
+                return {"ok": True, "method": "ytdlp", "path": out_path}
+            errors.append("ytdlp: no file produced")
+        except Exception as e:
+            logger.warning("download_youtube: yt-dlp failed: %r", e)
+            errors.append(f"ytdlp: {e}")
 
     # Level 1: cobalt.tools
-    try:
-        logger.info("download_youtube: trying cobalt")
-        cobalt_path = await asyncio.to_thread(_download_video_cobalt, url, task_id)
-        if cobalt_path and os.path.exists(cobalt_path):
-            if cobalt_path != out_path:
-                import shutil as _shutil
-                _shutil.move(cobalt_path, out_path)
-            logger.info("download_youtube: cobalt OK")
-            return {"ok": True, "method": "cobalt", "path": out_path}
-        errors.append("cobalt: no file returned")
-    except Exception as e:
-        logger.warning("download_youtube: cobalt failed: %r", e)
-        errors.append(f"cobalt: {e}")
+    if not await _is_method_healthy("cobalt"):
+        logger.info("[auto-failover] cobalt unhealthy, skipping")
+    else:
+        any_attempted = True
+        try:
+            logger.info("download_youtube: trying cobalt")
+            cobalt_path = await asyncio.to_thread(_download_video_cobalt, url, task_id)
+            if cobalt_path and os.path.exists(cobalt_path):
+                if cobalt_path != out_path:
+                    import shutil as _shutil
+                    _shutil.move(cobalt_path, out_path)
+                logger.info("download_youtube: cobalt OK")
+                return {"ok": True, "method": "cobalt", "path": out_path}
+            errors.append("cobalt: no file returned")
+        except Exception as e:
+            logger.warning("download_youtube: cobalt failed: %r", e)
+            errors.append(f"cobalt: {e}")
 
     # Level 2: RapidAPI
-    try:
-        logger.info("download_youtube: trying rapidapi")
-        if await _download_video_rapidapi(url, out_path, task_id):
-            logger.info("download_youtube: rapidapi OK")
-            return {"ok": True, "method": "rapidapi", "path": out_path}
-        errors.append("rapidapi: no file returned")
-    except Exception as e:
-        logger.warning("download_youtube: rapidapi failed: %r", e)
-        errors.append(f"rapidapi: {e}")
+    if not await _is_method_healthy("rapidapi"):
+        logger.info("[auto-failover] rapidapi unhealthy, skipping")
+    else:
+        any_attempted = True
+        try:
+            logger.info("download_youtube: trying rapidapi")
+            if await _download_video_rapidapi(url, out_path, task_id):
+                logger.info("download_youtube: rapidapi OK")
+                return {"ok": True, "method": "rapidapi", "path": out_path}
+            errors.append("rapidapi: no file returned")
+        except Exception as e:
+            logger.warning("download_youtube: rapidapi failed: %r", e)
+            errors.append(f"rapidapi: {e}")
+
+    # Fallback: all methods unhealthy — force yt-dlp without health check
+    if not any_attempted:
+        logger.warning("[auto-failover] all methods unhealthy, forcing yt-dlp fallback")
+        try:
+            cookies_file_v = _prepare_ytdlp_cookies() or _get_cookie_file()
+            tmp_id = task_id + "_ytdl"
+            await asyncio.wait_for(asyncio.to_thread(_download_with_ytdlp, url, tmp_id, cookies_file_v, True), timeout=DOWNLOAD_TIMEOUT)
+            video_files = _glob.glob(f"/tmp/{tmp_id}.*")
+            if video_files:
+                import shutil as _shutil
+                _shutil.move(video_files[0], out_path)
+                logger.info("download_youtube: forced yt-dlp OK")
+                return {"ok": True, "method": "ytdlp", "path": out_path}
+            errors.append("forced_ytdlp: no file produced")
+        except Exception as e:
+            logger.warning("download_youtube: forced yt-dlp failed: %r", e)
+            errors.append(f"forced_ytdlp: {e}")
 
     return {"ok": False, "error": " | ".join(errors)}
-
 async def _download_video_savefrom(task_id: str, url: str, output_path: str) -> bool:
     """Level 2 fallback: SaveFrom.net API"""
     try:
