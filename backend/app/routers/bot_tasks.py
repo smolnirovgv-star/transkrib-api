@@ -1842,7 +1842,8 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.info("[CUT] %s: mp4 not found, downloading for cutting...", task_id)
                 video_path = None
 
-                is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                is_telegram_file = "api.telegram.org/file/bot" in url
+                is_youtube_cut = "youtube.com" in url or "youtu.be" in url or is_telegram_file
                 logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
                             task_id, is_youtube_cut, _mask_telegram_token(url[:60]))
 
