@@ -1843,11 +1843,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 video_path = None
 
                 is_telegram_file = "api.telegram.org/file/bot" in url
-                is_youtube_cut = "youtube.com" in url or "youtu.be" in url or is_telegram_file
-                logger.info("[CUT] %s: is_youtube_cut=%s url=%s",
-                            task_id, is_youtube_cut, _mask_telegram_token(url[:60]))
-
-                if is_youtube_cut:
+                is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                if is_telegram_file:
+                    # Re-download Telegram file
+                    try:
+                        async with httpx.AsyncClient(timeout=120) as _tg_client:
+                            _tg_resp = await _tg_client.get(url)
+                            _tg_resp.raise_for_status()
+                            with open(video_path, "wb") as f:
+                                f.write(_tg_resp.content)
+                        logger.info("[CUT] %s: re-downloaded Telegram file: %s", task_id, video_path)
+                    except Exception as e_tg2:
+                        logger.error("[CUT] %s: Telegram re-download failed: %s", task_id, e_tg2)
+                        video_path = None
+                elif is_youtube_cut:
                     tmp_video = f"/tmp/{task_id}.mp4"
                     dl_result = await download_youtube(
                         tasks_store[task_id].get("url", url), task_id, tmp_video
@@ -1891,6 +1900,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
                 if not video_path:
                     logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
+
 
             # Конвертировать в MP4 если нужно
             if video_path and not video_path.endswith(".mp4"):
@@ -1937,6 +1947,12 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 
                 try: os.remove(video_path)
                 except: pass
+
+        # For phone videos without cutting — send original file
+        if not tasks_store[task_id].get("output_video_path"):
+            phone_path = f"/tmp/{task_id}.mp4"
+            if os.path.exists(phone_path) and "api.telegram.org/file/bot" in url:
+                tasks_store[task_id]["output_video_path"] = phone_path
 
         _m_final = "success"
         tasks_store[task_id]["status"] = "done"
