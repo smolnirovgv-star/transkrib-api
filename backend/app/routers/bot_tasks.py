@@ -508,11 +508,13 @@ def _ts_to_sec(t) -> float:
     return float(t)
 
 
-def _is_valid_chunks(chunks: list, duration: float) -> bool:
+def _is_valid_chunks(chunks: list, duration: float, target_minutes: float = 0) -> bool:
     """Check that Claude-selection returned a usable list of segments."""
     if not chunks or len(chunks) < 2:
         logger.debug("[CUT] _is_valid_chunks: rejected — count=%d < 2", len(chunks) if chunks else 0)
         return False
+
+    total_included_sec = 0
     for ch in chunks:
         try:
             start = _ts_to_sec(ch.get("start_time"))
@@ -520,21 +522,30 @@ def _is_valid_chunks(chunks: list, duration: float) -> bool:
         except (ValueError, TypeError) as e:
             logger.debug("[CUT] _is_valid_chunks: parse error chunk=%s: %s", ch, e)
             return False
-        reasons = []
         if start < 0:
-            reasons.append(f"start<0 ({start})")
-        if end <= 0:
-            reasons.append(f"end<=0 ({end})")
-        if start >= end:
-            reasons.append(f"start>=end ({start}>={end})")
-        if end - start < 1:
-            reasons.append(f"duration<1s ({end - start:.2f}s)")
-        if duration > 0 and end > duration + 1:
-            reasons.append(f"end>duration+1 ({end}>{duration + 1})")
-        if reasons:
-            logger.debug("[CUT] _is_valid_chunks: chunk INVALID chunk=%s reasons=%s", ch, reasons)
             return False
-        logger.debug("[CUT] _is_valid_chunks: chunk ok start=%.1f end=%.1f duration=%.1f", start, end, duration)
+        if end <= 0:
+            return False
+        if start >= end:
+            return False
+        if end - start < 1:
+            return False
+        if duration > 0 and end > duration + 1:
+            return False
+        if ch.get("include", False):
+            total_included_sec += (end - start)
+
+    # Проверка отклонения от целевой длительности ± 10%
+    if target_minutes > 0:
+        target_sec = target_minutes * 60
+        deviation = abs(total_included_sec - target_sec) / target_sec
+        if deviation > 0.10:
+            logger.warning(
+                "[VALIDATOR] Deviation %.1f%% from target %.0fmin (got %.1fmin) — REJECTED",
+                deviation * 100, target_minutes, total_included_sec / 60
+            )
+            return False
+
     return True
 
 
@@ -1807,7 +1818,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             _duration = tasks_store[task_id].get("duration_seconds", 0)
             # DBG-B: before validator
             logger.info("[CUT] %s: DBG-B before_validator chunks=%s duration=%s", task_id, chunks[:3], _duration)
-            _chunks_valid = _is_valid_chunks(chunks, _duration)
+            _chunks_valid = _is_valid_chunks(chunks, _duration, target_minutes=cut_min_val)
             # DBG-C: validator result
             logger.info("[CUT] %s: DBG-C validator_result=%s", task_id, _chunks_valid)
             _m_cut = "success" if _chunks_valid else None
