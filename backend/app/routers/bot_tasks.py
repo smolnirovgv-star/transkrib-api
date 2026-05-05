@@ -1806,159 +1806,179 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
         logger.info("[CUT_ENTRY] task=%s cut_min_val=%d fmt=%r output_format=%r",
                     task_id, cut_min_val, fmt, output_format)
         if cut_min_val > 0:
-            tasks_store[task_id]["status"] = "cutting"
-            tasks_store[task_id]["progress"] = 4
-            chunk_result = tasks_store[task_id].get("chunk_analysis", {})
-            chunks = chunk_result.get("chunks", [])
-            logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
-                        task_id, len(chunks), bool(chunk_result))
-            # DBG-A: raw chunks from Claude
-            logger.info("[CUT] %s: DBG-A raw_chunks=%s", task_id, chunks[:3])
-
-            # Uniform-cut fallback: если Claude вернул невалидные сегменты
-            _duration = tasks_store[task_id].get("duration_seconds", 0)
-            # DBG-B: before validator
-            logger.info("[CUT] %s: DBG-B before_validator chunks=%s duration=%s", task_id, chunks[:3], _duration)
-            _chunks_valid = _is_valid_chunks(chunks, _duration, target_minutes=cut_min_val)
-            # DBG-C: validator result
-            logger.info("[CUT] %s: DBG-C validator_result=%s", task_id, _chunks_valid)
-            _m_cut = "success" if _chunks_valid else None
-            if not _chunks_valid:
-                logger.info("[CUT] %s: validator REJECTED chunks (count=%d), examples: %s",
-                            task_id, len(chunks) if chunks else 0, chunks[:3])
-                logger.info("[CUT] %s: uniform-cut fallback STARTED, generating chunks for duration=%s, cut_min_val=%s",
-                            task_id, _duration, cut_min_val)
-                chunks = generate_uniform_chunks(_duration, cut_min_val)
-                logger.info("[CUT] %s: uniform-cut chunks generated: %s", task_id, chunks)
-                _m_cut = "uniform_fallback"
-
-            # Если нет chunks из анализа — нарезка по равным интервалам
-            if not chunks:
-                duration_sec = cut_min_val * 60
-                chunks = [
-                    {"start_time": f"{(i * cut_min_val) // 60:02d}:{(i * cut_min_val) % 60:02d}:00",
-                     "end_time":   f"{((i+1) * cut_min_val) // 60:02d}:{((i+1) * cut_min_val) % 60:02d}:00",
-                     "include": True}
-                    for i in range(3)
-                ]
-                logger.info("[CUT] %s: equal-interval fallback chunks (%d min each)", task_id, cut_min_val)
-
-            tasks_store[task_id]["stage"] = "cutting_video"
-            logger.info("[CUT] %s: starting video cut", task_id)
-
-            video_path = f"/tmp/{task_id}.mp4"
-
-            if os.path.exists(video_path):
-                logger.info("[CUT] REUSING existing mp4: %s", video_path)
+            # === GUARD: формат должен требовать видео-нарезку ===
+            _video_required_formats = {"video", "video_srt"}
+            _need_video = (output_format in _video_required_formats)
+            if not _need_video:
+                logger.info("[CUT] %s: SKIPPED — output_format=%r не требует видео",
+                            task_id, output_format)
             else:
-                logger.info("[CUT] %s: mp4 not found, downloading for cutting...", task_id)
-                video_path = None
-
-                is_telegram_file = "api.telegram.org/file/bot" in url
-                is_youtube_cut = "youtube.com" in url or "youtu.be" in url
-                if is_telegram_file:
-                    # Re-download Telegram file
-                    try:
-                        async with httpx.AsyncClient(timeout=120) as _tg_client:
-                            _tg_resp = await _tg_client.get(url)
-                            _tg_resp.raise_for_status()
-                            with open(video_path, "wb") as f:
-                                f.write(_tg_resp.content)
-                        logger.info("[CUT] %s: re-downloaded Telegram file: %s", task_id, video_path)
-                    except Exception as e_tg2:
-                        logger.error("[CUT] %s: Telegram re-download failed: %s", task_id, e_tg2)
-                        video_path = None
-                elif is_youtube_cut:
-                    tmp_video = f"/tmp/{task_id}.mp4"
-                    dl_result = await download_youtube(
-                        tasks_store[task_id].get("url", url), task_id, tmp_video
+                # === GUARD: duration > 0 обязателен для нарезки ===
+                _duration_check = tasks_store[task_id].get("duration_seconds", 0)
+                if not _duration_check or _duration_check <= 0:
+                    logger.error("[CUT] %s: ABORT cutting — duration_seconds=%s невалидно.",
+                                 task_id, _duration_check)
+                    tasks_store[task_id]["status"] = "error"
+                    tasks_store[task_id]["error"] = (
+                        "Не удалось определить длительность видео. "
+                        "Это может быть временная блокировка YouTube. "
+                        "Попробуй позже или пришли другую ссылку."
                     )
-                    if dl_result["ok"]:
-                        video_path = tmp_video
-                        logger.info("[CUT] %s: downloaded via %s", task_id, dl_result["method"])
-                    else:
-                        logger.error("[CUT] %s: all YouTube download methods failed: %s",
-                                     task_id, dl_result["error"])
-                        tasks_store[task_id]["cut_download_warning"] = (
-                            "⚠️ Транскрипция готова, но нарезанное видео не удалось скачать. "
-                            "Попробуйте другое видео или режим 'Только транскрипция'."
-                        )
+                    return
+
+                tasks_store[task_id]["status"] = "cutting"
+                tasks_store[task_id]["progress"] = 4
+                chunk_result = tasks_store[task_id].get("chunk_analysis", {})
+                chunks = chunk_result.get("chunks", [])
+                logger.info("[CUT] %s: chunks=%d chunk_analysis_present=%s",
+                            task_id, len(chunks), bool(chunk_result))
+                # DBG-A: raw chunks from Claude
+                logger.info("[CUT] %s: DBG-A raw_chunks=%s", task_id, chunks[:3])
+
+                # Uniform-cut fallback: если Claude вернул невалидные сегменты
+                _duration = tasks_store[task_id].get("duration_seconds", 0)
+                # DBG-B: before validator
+                logger.info("[CUT] %s: DBG-B before_validator chunks=%s duration=%s", task_id, chunks[:3], _duration)
+                _chunks_valid = _is_valid_chunks(chunks, _duration, target_minutes=cut_min_val)
+                # DBG-C: validator result
+                logger.info("[CUT] %s: DBG-C validator_result=%s", task_id, _chunks_valid)
+                _m_cut = "success" if _chunks_valid else None
+                if not _chunks_valid:
+                    logger.info("[CUT] %s: validator REJECTED chunks (count=%d), examples: %s",
+                                task_id, len(chunks) if chunks else 0, chunks[:3])
+                    logger.info("[CUT] %s: uniform-cut fallback STARTED, generating chunks for duration=%s, cut_min_val=%s",
+                                task_id, _duration, cut_min_val)
+                    chunks = generate_uniform_chunks(_duration, cut_min_val)
+                    logger.info("[CUT] %s: uniform-cut chunks generated: %s", task_id, chunks)
+                    _m_cut = "uniform_fallback"
+
+                # Если нет chunks из анализа — нарезка по равным интервалам
+                if not chunks:
+                    duration_sec = cut_min_val * 60
+                    chunks = [
+                        {"start_time": f"{(i * cut_min_val) // 60:02d}:{(i * cut_min_val) % 60:02d}:00",
+                         "end_time":   f"{((i+1) * cut_min_val) // 60:02d}:{((i+1) * cut_min_val) % 60:02d}:00",
+                         "include": True}
+                        for i in range(3)
+                    ]
+                    logger.info("[CUT] %s: equal-interval fallback chunks (%d min each)", task_id, cut_min_val)
+
+                tasks_store[task_id]["stage"] = "cutting_video"
+                logger.info("[CUT] %s: starting video cut", task_id)
+
+                video_path = f"/tmp/{task_id}.mp4"
+
+                if os.path.exists(video_path):
+                    logger.info("[CUT] REUSING existing mp4: %s", video_path)
                 else:
-                    # Non-YouTube (Rutube, VK etc.): yt-dlp only
-                    logger.info("[CUT] %s: trying yt-dlp for non-YouTube...", task_id)
-                    try:
-                        cookies_file_v = _get_cookie_file()
-                        await asyncio.wait_for(
-                            asyncio.to_thread(
-                                _download_with_ytdlp,
-                                tasks_store[task_id].get("url", url),
-                                task_id + "_video",
-                                cookies_file_v,
-                                True
-                            ),
-                            timeout=DOWNLOAD_TIMEOUT
+                    logger.info("[CUT] %s: mp4 not found, downloading for cutting...", task_id)
+                    video_path = None
+
+                    is_telegram_file = "api.telegram.org/file/bot" in url
+                    is_youtube_cut = "youtube.com" in url or "youtu.be" in url
+                    if is_telegram_file:
+                        # Re-download Telegram file
+                        try:
+                            async with httpx.AsyncClient(timeout=120) as _tg_client:
+                                _tg_resp = await _tg_client.get(url)
+                                _tg_resp.raise_for_status()
+                                with open(video_path, "wb") as f:
+                                    f.write(_tg_resp.content)
+                            logger.info("[CUT] %s: re-downloaded Telegram file: %s", task_id, video_path)
+                        except Exception as e_tg2:
+                            logger.error("[CUT] %s: Telegram re-download failed: %s", task_id, e_tg2)
+                            video_path = None
+                    elif is_youtube_cut:
+                        tmp_video = f"/tmp/{task_id}.mp4"
+                        dl_result = await download_youtube(
+                            tasks_store[task_id].get("url", url), task_id, tmp_video
                         )
-                        import glob as _glob
-                        video_files = _glob.glob(f"/tmp/{task_id}_video.*")
-                        if video_files:
-                            video_path = video_files[0]
-                            logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
+                        if dl_result["ok"]:
+                            video_path = tmp_video
+                            logger.info("[CUT] %s: downloaded via %s", task_id, dl_result["method"])
                         else:
-                            logger.warning("[CUT] %s: yt-dlp returned no file", task_id)
-                    except Exception as e_v:
-                        logger.error("[CUT] %s: yt-dlp exception: %s", task_id,
-                                     traceback.format_exc())
-
-                logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
-                if not video_path:
-                    logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
-
-
-            # Конвертировать в MP4 если нужно
-            if video_path and not video_path.endswith(".mp4"):
-                logger.info("[CUT] %s: converting to MP4...", task_id)
-                mp4_path = f"/tmp/{task_id}_video.mp4"
-                try:
-                    import subprocess as _sp
-                    result = _sp.run([
-                        "ffmpeg", "-y", "-i", video_path,
-                        "-c:v", "libx264", "-preset", "fast", "-crf", "28",
-                        "-c:a", "aac", "-b:a", "128k",
-                        mp4_path
-                    ], capture_output=True, text=True, timeout=300)
-                    if result.returncode == 0:
-                        os.remove(video_path)
-                        video_path = mp4_path
-                        logger.info("[CUT] %s: converted to MP4", task_id)
+                            logger.error("[CUT] %s: all YouTube download methods failed: %s",
+                                         task_id, dl_result["error"])
+                            tasks_store[task_id]["cut_download_warning"] = (
+                                "⚠️ Транскрипция готова, но нарезанное видео не удалось скачать. "
+                                "Попробуйте другое видео или режим 'Только транскрипция'."
+                            )
                     else:
-                        logger.warning("[CUT] %s: MP4 conversion failed, using original", task_id)
-                except Exception as e_conv:
-                    logger.warning("[CUT] %s: conversion error: %s", task_id, e_conv)
+                        # Non-YouTube (Rutube, VK etc.): yt-dlp only
+                        logger.info("[CUT] %s: trying yt-dlp for non-YouTube...", task_id)
+                        try:
+                            cookies_file_v = _get_cookie_file()
+                            await asyncio.wait_for(
+                                asyncio.to_thread(
+                                    _download_with_ytdlp,
+                                    tasks_store[task_id].get("url", url),
+                                    task_id + "_video",
+                                    cookies_file_v,
+                                    True
+                                ),
+                                timeout=DOWNLOAD_TIMEOUT
+                            )
+                            import glob as _glob
+                            video_files = _glob.glob(f"/tmp/{task_id}_video.*")
+                            if video_files:
+                                video_path = video_files[0]
+                                logger.info("[CUT] %s: yt-dlp success: %s", task_id, video_path)
+                            else:
+                                logger.warning("[CUT] %s: yt-dlp returned no file", task_id)
+                        except Exception as e_v:
+                            logger.error("[CUT] %s: yt-dlp exception: %s", task_id,
+                                         traceback.format_exc())
 
-            if video_path and os.path.exists(video_path):
-                output_video = f"/tmp/{task_id}_cut.mp4"
-                # DBG-D: chunks entering cut_video_with_ffmpeg
-                logger.info("[CUT] %s: DBG-D pre_ffmpeg chunks=%s", task_id, chunks[:3])
-                success = await asyncio.to_thread(
-                    cut_video_with_ffmpeg,
-                    video_path,
-                    chunks,
-                    output_video,
-                    task_id
-                )
-                if success:
-                    tasks_store[task_id]["output_video_path"] = output_video
-                    logger.info("[CUT] %s: video ready at %s", task_id, output_video)
-                else:
-                    logger.error("[CUT] %s: video cutting failed", task_id)
-                    _m_cut = "failed"
-                    tasks_store[task_id]["cut_error"] = (
-                        "⚠️ Не удалось нарезать видео. Транскрипт/SRT выше готовы. "
-                        "Попробуйте ещё раз или пришлите другой URL."
+                    logger.info("[CUT] %s: video_path after download=%s", task_id, video_path)
+                    if not video_path:
+                        logger.error("[CUT] %s: all download methods failed, skipping cut", task_id)
+
+
+                # Конвертировать в MP4 если нужно
+                if video_path and not video_path.endswith(".mp4"):
+                    logger.info("[CUT] %s: converting to MP4...", task_id)
+                    mp4_path = f"/tmp/{task_id}_video.mp4"
+                    try:
+                        import subprocess as _sp
+                        result = _sp.run([
+                            "ffmpeg", "-y", "-i", video_path,
+                            "-c:v", "libx264", "-preset", "fast", "-crf", "28",
+                            "-c:a", "aac", "-b:a", "128k",
+                            mp4_path
+                        ], capture_output=True, text=True, timeout=300)
+                        if result.returncode == 0:
+                            os.remove(video_path)
+                            video_path = mp4_path
+                            logger.info("[CUT] %s: converted to MP4", task_id)
+                        else:
+                            logger.warning("[CUT] %s: MP4 conversion failed, using original", task_id)
+                    except Exception as e_conv:
+                        logger.warning("[CUT] %s: conversion error: %s", task_id, e_conv)
+
+                if video_path and os.path.exists(video_path):
+                    output_video = f"/tmp/{task_id}_cut.mp4"
+                    # DBG-D: chunks entering cut_video_with_ffmpeg
+                    logger.info("[CUT] %s: DBG-D pre_ffmpeg chunks=%s", task_id, chunks[:3])
+                    success = await asyncio.to_thread(
+                        cut_video_with_ffmpeg,
+                        video_path,
+                        chunks,
+                        output_video,
+                        task_id
                     )
+                    if success:
+                        tasks_store[task_id]["output_video_path"] = output_video
+                        logger.info("[CUT] %s: video ready at %s", task_id, output_video)
+                    else:
+                        logger.error("[CUT] %s: video cutting failed", task_id)
+                        _m_cut = "failed"
+                        tasks_store[task_id]["cut_error"] = (
+                            "⚠️ Не удалось нарезать видео. Транскрипт/SRT выше готовы. "
+                            "Попробуйте ещё раз или пришлите другой URL."
+                        )
 
-                try: os.remove(video_path)
-                except: pass
+                    try: os.remove(video_path)
+                    except: pass
 
         # For phone videos without cutting — send original file
         if not tasks_store[task_id].get("output_video_path"):
@@ -2003,6 +2023,27 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 async def create_task(body: TaskCreate, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
     tasks_store[task_id] = {"status": "pending", "task_id": task_id}
+    if body.url and ("youtube.com" in body.url or "youtu.be" in body.url):
+        try:
+            cookie_path_pf = _prepare_ytdlp_cookies() or _get_cookie_file()
+            import yt_dlp as _yd_pf
+            opts_pf = {
+                "quiet": True, "skip_download": True, "no_warnings": True,
+                "socket_timeout": 15,
+                "extractor_args": {"youtube": {"player_client": ["tv", "android_vr"]}},
+            }
+            if cookie_path_pf:
+                opts_pf["cookiefile"] = cookie_path_pf
+            with _yd_pf.YoutubeDL(opts_pf) as _yd:
+                _info = _yd.extract_info(body.url, download=False)
+                _dur = int((_info or {}).get("duration") or 0)
+                if _dur > 0:
+                    tasks_store[task_id]["duration_seconds"] = _dur
+                    logger.info("[preflight] task=%s duration=%ds", task_id, _dur)
+                else:
+                    logger.warning("[preflight] task=%s duration=0", task_id)
+        except Exception as _e_pf:
+            logger.warning("[preflight] task=%s failed: %s", task_id, _e_pf)
     background_tasks.add_task(
         run_transcription,
         task_id,
@@ -2111,50 +2152,59 @@ async def clear_debug_logs():
 async def video_info(url: str):
     """
     Pre-flight: получить длительность видео без скачивания.
-    Использует yt-dlp --skip-download --dump-json (быстро, ~5-10 сек).
-    Возвращает: {ok, duration_seconds, title, error}.
+    Использует cookies (если есть) + retry на разных клиентах.
     """
     import yt_dlp as _ytdlp_mod
 
+    def _extract_with_client(client_list, cookie_path=None):
+        opts = {
+            "quiet": True, "skip_download": True, "no_warnings": True,
+            "socket_timeout": 15,
+            "extractor_args": {"youtube": {"player_client": client_list}},
+        }
+        if cookie_path:
+            opts["cookiefile"] = cookie_path
+        with _ytdlp_mod.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
+
     def _extract():
+        cookie_path = None
         try:
-            opts = {
-                "quiet": True,
-                "skip_download": True,
-                "no_warnings": True,
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": ["tv", "android_vr", "web_safari"],
+            cookie_path = _prepare_ytdlp_cookies() or _get_cookie_file()
+        except Exception:
+            pass
+        attempts = [
+            (["tv", "android_vr"], cookie_path),
+            (["web_safari", "tv"], cookie_path),
+            (["tv"], None),
+        ]
+        last_err = None
+        for clients, cpath in attempts:
+            try:
+                info = _extract_with_client(clients, cpath)
+                duration = int(info.get("duration") or 0)
+                if duration > 0:
+                    return {
+                        "ok": True,
+                        "duration_seconds": duration,
+                        "title": info.get("title", ""),
+                        "uploader": info.get("uploader", ""),
+                        "error": None,
                     }
-                },
-            }
-            with _ytdlp_mod.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                return {
-                    "ok": True,
-                    "duration_seconds": int(info.get("duration") or 0),
-                    "title": info.get("title", ""),
-                    "uploader": info.get("uploader", ""),
-                    "error": None,
-                }
-        except Exception as e:
-            return {
-                "ok": False,
-                "duration_seconds": 0,
-                "title": "",
-                "uploader": "",
-                "error": str(e)[:300],
-            }
+                last_err = f"duration={duration} (инфо есть, но длительность нулевая)"
+            except Exception as e:
+                last_err = f"{clients}: {str(e)[:200]}"
+                continue
+        return {
+            "ok": False, "duration_seconds": 0, "title": "", "uploader": "",
+            "error": f"все клиенты упали: {last_err}",
+        }
 
     try:
-        result = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=30)
+        result = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=60)
         return result
     except asyncio.TimeoutError:
         return {
-            "ok": False,
-            "duration_seconds": 0,
-            "title": "",
-            "uploader": "",
-            "error": "video_info: timeout 30s",
+            "ok": False, "duration_seconds": 0, "title": "", "uploader": "",
+            "error": "video_info: timeout 60s",
         }
-
