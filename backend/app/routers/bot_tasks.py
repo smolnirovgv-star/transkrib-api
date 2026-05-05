@@ -705,7 +705,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
 
     if video_needed:
         ydl_opts = {
-            "format": "best[ext=mp4][height<=720]/best[height<=720]/best[ext=mp4]/best",
+            "format": "bv*[height<=720][ext=mp4]+ba[ext=m4a]/bv*[height<=720]+ba/b[height<=720]/bv*+ba/b",
             "outtmpl": output_template,
             "quiet": False,
             "merge_output_format": "mp4",
@@ -754,8 +754,9 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
                     "YOUTUBE_PROXY" if os.environ.get("YOUTUBE_PROXY") else "WEBSHARE_PROXY")
     else:
         logger.warning("[ytdlp] NO proxy configured — YouTube likely to block")
+    # Используем клиенты, которые НЕ требуют GVS PO Token для базовых форматов
     ydl_opts["extractor_args"] = {
-        "youtube": {"player_client": ["ios", "web"]}
+        "youtube": {"player_client": ["tv", "android_vr", "web_safari"]}
     }
     logger.info("[DOWNLOAD] Using format: %s", ydl_opts.get("format"))
 
@@ -1653,7 +1654,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 if is_youtube:
                     raise Exception(
                         "Не удалось скачать YouTube-видео. "
-                        "Попробованы: yt-dlp, cobalt, rapidapi. "
+                        "Попробованы: yt-dlp, cobalt, pytubefix. "
                         "Попробуйте другое видео или пришлите ссылку ещё раз."
                     )
                 if ytdlp_error:

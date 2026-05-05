@@ -24,13 +24,14 @@ def update_critical_dependencies():
         )
         logger.info("Removed yt-dlp-youtube-oauth2 plugin (if existed)")
 
-        # Update yt-dlp to latest version
+        # Update yt-dlp to latest NIGHTLY (better PO Token + client support)
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
-            capture_output=True, text=True, timeout=120
+            [sys.executable, "-m", "pip", "install", "-U", "--pre",
+             "yt-dlp[default,curl-cffi]"],
+            capture_output=True, text=True, timeout=300
         )
         if result.returncode == 0:
-            logger.info("yt-dlp updated successfully")
+            logger.info("yt-dlp updated successfully (nightly)")
         else:
             logger.warning("yt-dlp update failed: %s", result.stderr[:300])
 
