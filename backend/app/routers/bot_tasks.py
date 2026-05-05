@@ -2034,6 +2034,10 @@ async def create_task(body: TaskCreate, background_tasks: BackgroundTasks):
             }
             if cookie_path_pf:
                 opts_pf["cookiefile"] = cookie_path_pf
+            # Proxy — обязательно для YouTube на Railway IP
+            _proxy_pf = os.environ.get("YOUTUBE_PROXY", "") or os.environ.get("WEBSHARE_PROXY", "")
+            if _proxy_pf:
+                opts_pf["proxy"] = _proxy_pf
             with _yd_pf.YoutubeDL(opts_pf) as _yd:
                 _info = _yd.extract_info(body.url, download=False)
                 _dur = int((_info or {}).get("duration") or 0)
@@ -2164,6 +2168,10 @@ async def video_info(url: str):
         }
         if cookie_path:
             opts["cookiefile"] = cookie_path
+        # Webshare proxy — обязательно для YouTube на Railway IP
+        proxy_url = os.environ.get("YOUTUBE_PROXY", "") or os.environ.get("WEBSHARE_PROXY", "")
+        if proxy_url:
+            opts["proxy"] = proxy_url
         with _ytdlp_mod.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 
@@ -2195,9 +2203,104 @@ async def video_info(url: str):
             except Exception as e:
                 last_err = f"{clients}: {str(e)[:200]}"
                 continue
+        # === FALLBACK 1: RapidAPI YouTube Media Downloader ===
+        # Преимущество: ходит к YouTube через свои серверы, не наш Railway IP
+        try:
+            _rapidapi_key = os.environ.get("RAPIDAPI_KEY", "")
+            if _rapidapi_key:
+                import re as _re_pf
+                _m = _re_pf.search(
+                    r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
+                    url
+                )
+                _video_id = _m.group(1) if _m else None
+                if _video_id:
+                    import httpx as _httpx_pf
+                    _r = _httpx_pf.get(
+                        "https://youtube-media-downloader.p.rapidapi.com/v2/video/details",
+                        params={"videoId": _video_id, "urlAccess": "normal", "videos": "auto", "audios": "auto"},
+                        headers={
+                            "x-rapidapi-host": "youtube-media-downloader.p.rapidapi.com",
+                            "x-rapidapi-key": _rapidapi_key,
+                        },
+                        timeout=15,
+                    )
+                    if _r.status_code == 200:
+                        _data = _r.json() or {}
+                        _len = _data.get("lengthSeconds") or _data.get("duration") or 0
+                        try:
+                            _dur_ra = int(_len)
+                        except (TypeError, ValueError):
+                            _dur_ra = 0
+                        if _dur_ra > 0:
+                            logger.info("[video_info] rapidapi вернул duration=%d", _dur_ra)
+                            _channel = _data.get("channel") or {}
+                            _uploader_ra = _channel.get("name", "") if isinstance(_channel, dict) else ""
+                            return {
+                                "ok": True,
+                                "duration_seconds": _dur_ra,
+                                "title": _data.get("title", "") or "",
+                                "uploader": _uploader_ra,
+                                "error": None,
+                            }
+                        last_err = f"rapidapi: lengthSeconds={_len}"
+                    else:
+                        last_err = f"rapidapi: HTTP {_r.status_code}"
+                else:
+                    last_err = "rapidapi: не извлекли video_id"
+        except Exception as e_ra:
+            last_err = f"rapidapi: {str(e_ra)[:200]}"
+
+        # === FALLBACK 2: pytubefix (другой алгоритм) ===
+        try:
+            from pytubefix import YouTube as _YT_pf
+            yt_pf = _YT_pf(url)
+            duration_pf = int(getattr(yt_pf, "length", 0) or 0)
+            if duration_pf > 0:
+                logger.info("[video_info] pytubefix вернул duration=%d", duration_pf)
+                return {
+                    "ok": True,
+                    "duration_seconds": duration_pf,
+                    "title": getattr(yt_pf, "title", "") or "",
+                    "uploader": getattr(yt_pf, "author", "") or "",
+                    "error": None,
+                }
+            last_err = f"pytubefix: duration={duration_pf}"
+        except Exception as e_pf:
+            last_err = f"pytubefix: {str(e_pf)[:200]}"
+
+        # === FALLBACK 3: Supadata API (если квота не исчерпана) ===
+        try:
+            _supadata_key = os.environ.get("SUPADATA_API_KEY", "")
+            if _supadata_key:
+                import httpx as _httpx_sd
+                _r_sd = _httpx_sd.get(
+                    "https://api.supadata.ai/v1/youtube/video",
+                    params={"url": url},
+                    headers={"x-api-key": _supadata_key},
+                    timeout=15,
+                )
+                if _r_sd.status_code == 200:
+                    _data_sd = _r_sd.json() or {}
+                    _dur_sd = int(_data_sd.get("duration") or _data_sd.get("durationSeconds") or 0)
+                    if _dur_sd > 0:
+                        logger.info("[video_info] supadata вернул duration=%d", _dur_sd)
+                        return {
+                            "ok": True,
+                            "duration_seconds": _dur_sd,
+                            "title": _data_sd.get("title", "") or "",
+                            "uploader": _data_sd.get("channel", "") or _data_sd.get("author", "") or "",
+                            "error": None,
+                        }
+                    last_err = f"supadata: ответ есть, duration={_dur_sd}"
+                else:
+                    last_err = f"supadata: HTTP {_r_sd.status_code}"
+        except Exception as e_sd:
+            last_err = f"supadata: {str(e_sd)[:200]}"
+
         return {
             "ok": False, "duration_seconds": 0, "title": "", "uploader": "",
-            "error": f"все клиенты упали: {last_err}",
+            "error": f"все источники упали (yt-dlp+proxy + rapidapi + pytubefix + supadata): {last_err}",
         }
 
     try:
