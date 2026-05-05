@@ -21,6 +21,14 @@ async def lifespan(app: FastAPI):
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from app.services.watchdog_alerts import send_usage_report as send_usage_report_job
 
+    # Update yt-dlp to nightly at startup (Railway entry point)
+    try:
+        from app.startup import update_critical_dependencies
+        await _asyncio.to_thread(update_critical_dependencies)
+        logger.info("[startup] update_critical_dependencies() finished")
+    except Exception as e:
+        logger.warning("[startup] update_critical_dependencies() failed: %s", e)
+
     _asyncio.create_task(_tmp_cleanup_worker())
     logger.info("[startup] tmp cleanup worker started (TTL=30min)")
 

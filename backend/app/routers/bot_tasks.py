@@ -2105,3 +2105,56 @@ async def get_debug_logs(n: int = 100):
 async def clear_debug_logs():
     _LOG_BUFFER.clear()
     return {"cleared": True}
+
+
+@router.get("/api/video-info")
+async def video_info(url: str):
+    """
+    Pre-flight: получить длительность видео без скачивания.
+    Использует yt-dlp --skip-download --dump-json (быстро, ~5-10 сек).
+    Возвращает: {ok, duration_seconds, title, error}.
+    """
+    import yt_dlp as _ytdlp_mod
+
+    def _extract():
+        try:
+            opts = {
+                "quiet": True,
+                "skip_download": True,
+                "no_warnings": True,
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["tv", "android_vr", "web_safari"],
+                    }
+                },
+            }
+            with _ytdlp_mod.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                return {
+                    "ok": True,
+                    "duration_seconds": int(info.get("duration") or 0),
+                    "title": info.get("title", ""),
+                    "uploader": info.get("uploader", ""),
+                    "error": None,
+                }
+        except Exception as e:
+            return {
+                "ok": False,
+                "duration_seconds": 0,
+                "title": "",
+                "uploader": "",
+                "error": str(e)[:300],
+            }
+
+    try:
+        result = await asyncio.wait_for(asyncio.to_thread(_extract), timeout=30)
+        return result
+    except asyncio.TimeoutError:
+        return {
+            "ok": False,
+            "duration_seconds": 0,
+            "title": "",
+            "uploader": "",
+            "error": "video_info: timeout 30s",
+        }
+
