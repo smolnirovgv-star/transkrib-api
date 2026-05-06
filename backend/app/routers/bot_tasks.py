@@ -583,6 +583,7 @@ class TaskCreate(BaseModel):
     cut_minutes: Optional[str] = None
     format: Optional[str] = "text"
     language: Optional[str] = "auto"
+    duration_seconds: Optional[int] = None  # передаётся от бота, чтобы не делать второй pre-flight
 
 
 def _fmt_srt_time(t: float) -> str:
@@ -2034,32 +2035,20 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
 @router.post("/api/tasks/create")
 async def create_task(body: TaskCreate, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())
-    tasks_store[task_id] = {"status": "pending", "task_id": task_id}
-    if body.url and ("youtube.com" in body.url or "youtu.be" in body.url):
-        try:
-            cookie_path_pf = _prepare_ytdlp_cookies() or _get_cookie_file()
-            import yt_dlp as _yd_pf
-            opts_pf = {
-                "quiet": True, "skip_download": True, "no_warnings": True,
-                "socket_timeout": 15,
-                "extractor_args": {"youtube": {"player_client": ["tv", "android_vr"]}},
-            }
-            if cookie_path_pf:
-                opts_pf["cookiefile"] = cookie_path_pf
-            # Proxy — обязательно для YouTube на Railway IP
-            _proxy_pf = os.environ.get("YOUTUBE_PROXY", "") or os.environ.get("WEBSHARE_PROXY", "")
-            if _proxy_pf:
-                opts_pf["proxy"] = _proxy_pf
-            with _yd_pf.YoutubeDL(opts_pf) as _yd:
-                _info = _yd.extract_info(body.url, download=False)
-                _dur = int((_info or {}).get("duration") or 0)
-                if _dur > 0:
-                    tasks_store[task_id]["duration_seconds"] = _dur
-                    logger.info("[preflight] task=%s duration=%ds", task_id, _dur)
-                else:
-                    logger.warning("[preflight] task=%s duration=0", task_id)
-        except Exception as _e_pf:
-            logger.warning("[preflight] task=%s failed: %s", task_id, _e_pf)
+    tasks_store[task_id] = {
+        "status": "pending",
+        "task_id": task_id,
+        "duration_seconds": int(body.duration_seconds) if body.duration_seconds else 0,
+    }
+    # Pre-flight больше не нужен в API — бот передаёт duration_seconds через TaskCreate
+    # (получает его через /api/video-info с multi-source fallback chain)
+    if tasks_store[task_id].get("duration_seconds", 0) > 0:
+        logger.info("[preflight] task=%s duration=%ds (from bot)",
+                    task_id, tasks_store[task_id]["duration_seconds"])
+    else:
+        logger.warning("[preflight] task=%s no duration provided by bot, "
+                       "uniform_fallback может сработать неправильно",
+                       task_id)
     background_tasks.add_task(
         run_transcription,
         task_id,
