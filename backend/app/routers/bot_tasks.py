@@ -1464,9 +1464,21 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
             tasks_store[task_id]["url"] = url
 
         logger.info("[bot_tasks] %s: starting for %s", task_id, _mask_telegram_token(url[:80]))
+        # Маппинг fmt из бота → output_format API
+        # fmt_text/fmt_md → text (только транскрипция, нарезки нет)
+        # fmt_cut → video (транскрипция + видео-нарезка, без SRT)
+        # fmt_srt → srt (только SRT субтитры, нарезки нет)
+        # fmt_cut_srt → video_srt (нарезка + SRT субтитры)
+        _fmt_to_output = {
+            "fmt_text": "text",
+            "fmt_cut": "video",
+            "fmt_srt": "srt",
+            "fmt_cut_srt": "video_srt",
+            "fmt_md": "text",
+        }
+        output_format = _fmt_to_output.get(fmt, "text")
         logger.info("[FORMAT] task_id=%s fmt=%r output_format=%s",
-            task_id, fmt, "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text")
-        output_format = "srt" if fmt in ("fmt_srt", "fmt_cut_srt") else "text"  # fmt_md treated as text
+            task_id, fmt, output_format)
 
         # Check video duration before processing
         try:
