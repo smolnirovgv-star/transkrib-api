@@ -104,7 +104,7 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             method="yt_dlp",
             ok=bool(info),
             latency_ms=latency_ms,
-            bytes_downloaded=approx_bytes
+            bytes_downloaded=0  # metadata-only probe, no actual download
         )
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
