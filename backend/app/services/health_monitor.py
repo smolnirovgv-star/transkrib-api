@@ -17,6 +17,39 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def _get_cookie_file_for_health():
+    """Декодирует YOUTUBE_COOKIES_B64 в temp-файл. Изолированная копия логики из bot_tasks."""
+    import base64, tempfile
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if not b64:
+        secret_path = "/etc/secrets/YOUTUBE_COOKIES_B64"
+        if os.path.exists(secret_path):
+            try:
+                with open(secret_path) as f:
+                    b64 = f.read().strip()
+            except Exception:
+                pass
+    if not b64:
+        return None
+    try:
+        cookie_data = base64.b64decode(b64).decode("utf-8")
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8")
+        tmp.write(cookie_data)
+        tmp.close()
+        return tmp.name
+    except Exception as e:
+        logger.warning("[health] cookies decode failed: %s", e)
+        return None
+
+
+def _get_proxy_url_for_health():
+    """Возвращает proxy URL из ENV — никаких захардкоженных дефолтов."""
+    return (
+        os.environ.get("YOUTUBE_PROXY", "").strip()
+        or os.environ.get("WEBSHARE_PROXY", "").strip()
+    )
+
+
 @dataclass
 class HealthResult:
     """Result of a single download method check."""
@@ -38,8 +71,13 @@ HEALTH_CHECK_BYTE_THRESHOLD = 50_000  # 50 KB is enough to confirm method works
 
 
 async def _check_yt_dlp(url: str) -> HealthResult:
-    """Check yt-dlp: try to extract info (no full download)."""
+    """Check yt-dlp: extract info with cookies+proxy+extractor_args (same config as production)."""
     start = time.perf_counter()
+    cookie_path = _get_cookie_file_for_health()
+    proxy_url = _get_proxy_url_for_health()
+    logger.info("[health] yt_dlp check: cookies=%s proxy=%s",
+                "yes" if cookie_path else "no",
+                "yes" if proxy_url else "no")
     try:
         import yt_dlp
         ydl_opts = {
@@ -47,7 +85,14 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             'no_warnings': True,
             'skip_download': True,
             'socket_timeout': 15,
+            'extractor_args': {
+                'youtube': {'player_client': ['tv', 'android_vr', 'web_safari']}
+            },
         }
+        if cookie_path:
+            ydl_opts['cookiefile'] = cookie_path
+        if proxy_url:
+            ydl_opts['proxy'] = proxy_url
         loop = asyncio.get_event_loop()
         info = await loop.run_in_executor(
             None,
@@ -69,6 +114,12 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             latency_ms=latency_ms,
             error=str(e)[:200]
         )
+    finally:
+        if cookie_path and os.path.exists(cookie_path):
+            try:
+                os.unlink(cookie_path)
+            except Exception:
+                pass
 
 
 async def _check_rapidapi(url: str) -> HealthResult:
@@ -118,32 +169,63 @@ async def _check_rapidapi(url: str) -> HealthResult:
 
 
 async def _check_cobalt(url: str) -> HealthResult:
-    """Check Cobalt: ping the local instance."""
+    """Check Cobalt: verify API reachability AND actual file delivery (>10 KB)."""
     start = time.perf_counter()
     cobalt_url = os.getenv("COBALT_API_URL", "https://cobalt-production-f557.up.railway.app")
+    direct_url = None
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 cobalt_url + "/",
-                json={"url": url},
-                headers={"Accept": "application/json"}
+                json={
+                    "url": url,
+                    "videoQuality": "480",
+                    "downloadMode": "auto",
+                    "filenameStyle": "basic",
+                },
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
             )
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return HealthResult(
-            method="cobalt",
-            ok=resp.status_code == 200,
-            latency_ms=latency_ms,
-            bytes_downloaded=len(resp.content),
-            error=None if resp.status_code == 200 else f"HTTP {resp.status_code}"
-        )
+        if resp.status_code != 200:
+            return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                                error=f"HTTP {resp.status_code}")
+        data = resp.json()
+        status = data.get("status")
+        if status not in ("tunnel", "redirect", "stream"):
+            return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                                error=f"unexpected status: {status}")
+        direct_url = data.get("url")
+        if not direct_url:
+            return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                                error="no url in cobalt response")
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
-        return HealthResult(
-            method="cobalt",
-            ok=False,
-            latency_ms=latency_ms,
-            error=str(e)[:200]
-        )
+        return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                            error=str(e)[:200])
+
+    # Download first 50 KB to verify actual content delivery
+    try:
+        total = 0
+        async with httpx.AsyncClient(timeout=20.0) as dl_client:
+            async with dl_client.stream("GET", direct_url,
+                                        headers={"User-Agent": "Mozilla/5.0"}) as r:
+                if r.status_code != 200:
+                    return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                                        error=f"download HTTP {r.status_code}")
+                async for chunk in r.aiter_bytes(8192):
+                    total += len(chunk)
+                    if total >= 50000:
+                        break
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        if total < 10000:
+            return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                                error=f"cobalt returned empty stream: {total} bytes")
+        return HealthResult(method="cobalt", ok=True, latency_ms=latency_ms,
+                            bytes_downloaded=total)
+    except Exception as e:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return HealthResult(method="cobalt", ok=False, latency_ms=latency_ms,
+                            error=str(e)[:200])
 
 
 async def _check_supadata(url: str) -> HealthResult:

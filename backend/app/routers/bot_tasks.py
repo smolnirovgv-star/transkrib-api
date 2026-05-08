@@ -1124,8 +1124,10 @@ async def _download_video_supadata(url: str, out_path: str, task_id: str) -> boo
         logger.warning("[supadata] failed: %s", str(e)[:200])
         return False
 
+HEALTH_RECOVERY_TTL_SEC = 3600  # 1 hour: if all 5 last checks failed but latest is older than this, allow retry
+
 async def _is_method_healthy(method: str) -> bool:
-    """Checks last 3 records. Returns True if healthy or insufficient data."""
+    """Checks last 5 records with recovery TTL. Returns True if healthy or insufficient data."""
     import os
     try:
         from supabase import create_client
@@ -1134,14 +1136,29 @@ async def _is_method_healthy(method: str) -> bool:
         if not url or not key:
             return True
         sb = create_client(url, key)
-        resp = sb.table("download_healthcheck").select("ok").eq("method", method).order("ts", desc=True).limit(3).execute()
+        resp = sb.table("download_healthcheck").select("ok, ts").eq("method", method).order("ts", desc=True).limit(5).execute()
         rows = resp.data or []
-        if len(rows) < 3:
+        if len(rows) < 5:
             return True
-        all_failed = all(not r["ok"] for r in rows)
-        if all_failed:
-            logger.warning("[auto-failover] method=%s skipped: 3 consecutive fails in Watchdog", method)
-        return not all_failed
+        if any(r["ok"] for r in rows):
+            return True
+        # All 5 failed — check recovery TTL
+        from datetime import datetime, timezone
+        try:
+            latest_ts_str = rows[0]["ts"]
+            latest_ts = datetime.fromisoformat(latest_ts_str.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            age_sec = (now - latest_ts).total_seconds()
+            if age_sec > HEALTH_RECOVERY_TTL_SEC:
+                logger.info("[auto-failover] method=%s recovery: last fail %.0f sec ago > %d, allowing retry",
+                            method, age_sec, HEALTH_RECOVERY_TTL_SEC)
+                return True
+        except Exception as ts_err:
+            logger.warning("[auto-failover] ts parse failed for %s: %s — allowing retry", method, ts_err)
+            return True
+        logger.warning("[auto-failover] method=%s skipped: 5 consecutive fails within %d sec",
+                       method, HEALTH_RECOVERY_TTL_SEC)
+        return False
     except Exception as e:
         logger.error("[auto-failover] Supabase check failed: %s", e)
         return True
