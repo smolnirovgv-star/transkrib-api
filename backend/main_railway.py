@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     from app.routers.bot_tasks import _tmp_cleanup_worker
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from app.services.watchdog_alerts import send_usage_report as send_usage_report_job
+    from app.services.watchdog_alerts import send_daily_digest as send_daily_digest_job
 
     # Update yt-dlp to nightly at startup (Railway entry point)
     try:
@@ -46,7 +47,7 @@ async def lifespan(app: FastAPI):
         await _save_to_supabase(list(results), test_source="scheduler_free")
         await check_and_alert(list(results))
 
-    # Платные/лимитные методы — каждые 2 часа
+    # Платные/лимитные методы — каждые 24 часа (снижает расход квот: ~30 req/мес вместо ~360)
     async def _check_paid_methods():
         from app.services.health_monitor import _check_rapidapi, _check_supadata, _save_to_supabase
         from app.services.watchdog_alerts import check_and_alert
@@ -70,7 +71,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _check_paid_methods,
         trigger="interval",
-        hours=2,
+        hours=24,
         id="watchdog_paid",
         replace_existing=True,
     )
@@ -81,8 +82,15 @@ async def lifespan(app: FastAPI):
         id="usage_report",
         replace_existing=True,
     )
+    scheduler.add_job(
+        send_daily_digest_job,
+        trigger="interval",
+        hours=24,
+        id="daily_digest",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("[startup] watchdog scheduler started (free=15min, paid=2h, report=3d)")
+    logger.info("[startup] watchdog scheduler started (free=15min, paid=24h, digest=24h, report=3d)")
 
     logger.info("Transkrib API (Railway) starting...")
     logger.info("Python path: %s", os.environ.get("PYTHONPATH", "not set"))
