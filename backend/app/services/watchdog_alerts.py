@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 CONSECUTIVE_FAILS_THRESHOLD = 3
-ALERT_COOLDOWN_HOURS = 1
+ALERT_COOLDOWN_HOURS = 24
 
 _alert_state: dict[str, dict] = {
     method: {"alerted": False, "last_alert_ts": None}
