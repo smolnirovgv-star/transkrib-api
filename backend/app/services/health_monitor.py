@@ -72,12 +72,73 @@ HEALTH_CHECK_BYTE_THRESHOLD = 50_000  # 50 KB is enough to confirm method works
 
 async def _check_yt_dlp(url: str) -> HealthResult:
     """Check yt-dlp: extract info with cookies+proxy+extractor_args (same config as production)."""
+    import base64 as _base64
+    from urllib.parse import urlparse
+
     start = time.perf_counter()
     cookie_path = _get_cookie_file_for_health()
     proxy_url = _get_proxy_url_for_health()
-    logger.info("[health] yt_dlp check: cookies=%s proxy=%s",
-                "yes" if cookie_path else "no",
-                "yes" if proxy_url else "no")
+
+    # --- Pre-check metadata ---
+    b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+    if not b64:
+        _secret = "/etc/secrets/YOUTUBE_COOKIES_B64"
+        if os.path.exists(_secret):
+            try:
+                with open(_secret) as _f:
+                    b64 = _f.read().strip()
+            except Exception:
+                pass
+    cookies_b64_length = len(b64)
+    try:
+        cookies_decoded_length = len(_base64.b64decode(b64)) if b64 else 0
+    except Exception:
+        cookies_decoded_length = 0
+    cookies_file_size_bytes = None
+    if cookie_path and os.path.exists(cookie_path):
+        try:
+            cookies_file_size_bytes = os.path.getsize(cookie_path)
+        except Exception:
+            pass
+
+    _yt_proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
+    _wb_proxy = os.environ.get("WEBSHARE_PROXY", "").strip()
+    proxy_env_source = "YOUTUBE_PROXY" if _yt_proxy else ("WEBSHARE_PROXY" if _wb_proxy else None)
+
+    proxy_url_masked = None
+    if proxy_url:
+        try:
+            _p = urlparse(proxy_url)
+            if _p.password:
+                proxy_url_masked = proxy_url.replace(f":{_p.password}@", ":***@")
+            else:
+                proxy_url_masked = proxy_url
+        except Exception:
+            proxy_url_masked = "[parse error]"
+
+    player_client_list = ['tv', 'android_vr', 'web_safari']
+
+    logger.info(
+        "[WATCHDOG_YTDLP_PRE] proxy_present=%s proxy_url_masked=%s proxy_env_source=%s "
+        "cookies_present=%s cookies_b64_length=%d cookies_decoded_length=%d "
+        "cookies_tmp_file_path=%s cookies_file_size_bytes=%s "
+        "player_client_list=%s test_video_url=%s",
+        bool(proxy_url), proxy_url_masked, proxy_env_source,
+        bool(cookie_path), cookies_b64_length, cookies_decoded_length,
+        cookie_path, cookies_file_size_bytes,
+        player_client_list, url,
+    )
+
+    # httpbin proxy IP check (httpx already in project deps)
+    if proxy_url:
+        try:
+            async with httpx.AsyncClient(proxy=proxy_url, timeout=5.0) as _hx:
+                _ip_resp = await _hx.get("https://httpbin.org/ip")
+                _origin = _ip_resp.json().get("origin", "unknown")
+            logger.info("[WATCHDOG_YTDLP_PROXY_IP] ip=%s", _origin)
+        except Exception as _pe:
+            logger.warning("[WATCHDOG_YTDLP_PROXY_IP] check failed: %s", _pe)
+
     try:
         import yt_dlp
         ydl_opts = {
@@ -88,6 +149,8 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             'extractor_args': {
                 'youtube': {'player_client': ['tv', 'android_vr', 'web_safari']}
             },
+            'verbose': True,
+            'logger': logging.getLogger("yt_dlp_health"),
         }
         if cookie_path:
             ydl_opts['cookiefile'] = cookie_path
@@ -99,6 +162,10 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
         )
         latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.info(
+            "[WATCHDOG_YTDLP_POST] success=True latency_ms=%d error_class=None error_message=None",
+            latency_ms,
+        )
         approx_bytes = info.get('filesize_approx', 0) if info else 0
         return HealthResult(
             method="yt_dlp",
@@ -108,6 +175,10 @@ async def _check_yt_dlp(url: str) -> HealthResult:
         )
     except Exception as e:
         latency_ms = int((time.perf_counter() - start) * 1000)
+        logger.error(
+            "[WATCHDOG_YTDLP_POST] success=False latency_ms=%d error_class=%s error_message=%s",
+            latency_ms, type(e).__name__, str(e)[:500],
+        )
         return HealthResult(
             method="yt_dlp",
             ok=False,
