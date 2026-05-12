@@ -69,6 +69,9 @@ DEFAULT_TEST_URL = os.getenv(
 # How many bytes to download to count as "ok" (no need to download full file)
 HEALTH_CHECK_BYTE_THRESHOLD = 50_000  # 50 KB is enough to confirm method works
 
+# Single source of truth for yt-dlp player clients used in both logging and ydl_opts
+YTDLP_PLAYER_CLIENTS = ['android', 'web']
+
 
 async def _check_yt_dlp(url: str) -> HealthResult:
     """Check yt-dlp: extract info with cookies+proxy+extractor_args (same config as production)."""
@@ -116,7 +119,7 @@ async def _check_yt_dlp(url: str) -> HealthResult:
         except Exception:
             proxy_url_masked = "[parse error]"
 
-    player_client_list = ['tv', 'android_vr', 'web_safari']
+    player_client_list = YTDLP_PLAYER_CLIENTS
 
     logger.info(
         "[WATCHDOG_YTDLP_PRE] proxy_present=%s proxy_url_masked=%s proxy_env_source=%s "
@@ -147,7 +150,7 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             'skip_download': True,
             'socket_timeout': 15,
             'extractor_args': {
-                'youtube': {'player_client': ['android', 'web']}
+                'youtube': {'player_client': YTDLP_PLAYER_CLIENTS}
             },
             'verbose': True,
             'logger': logging.getLogger("yt_dlp_health"),
