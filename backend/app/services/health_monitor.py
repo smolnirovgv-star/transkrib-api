@@ -121,15 +121,18 @@ async def _check_yt_dlp(url: str) -> HealthResult:
 
     player_client_list = YTDLP_PLAYER_CLIENTS
 
+    import yt_dlp as _yt_dlp_ver
+    ytdlp_version = getattr(_yt_dlp_ver.version, "__version__", "unknown")
+
     logger.info(
         "[WATCHDOG_YTDLP_PRE] proxy_present=%s proxy_url_masked=%s proxy_env_source=%s "
         "cookies_present=%s cookies_b64_length=%d cookies_decoded_length=%d "
         "cookies_tmp_file_path=%s cookies_file_size_bytes=%s "
-        "player_client_list=%s test_video_url=%s",
+        "player_client_list=%s test_video_url=%s ytdlp_version=%s",
         bool(proxy_url), proxy_url_masked, proxy_env_source,
         bool(cookie_path), cookies_b64_length, cookies_decoded_length,
         cookie_path, cookies_file_size_bytes,
-        player_client_list, url,
+        player_client_list, url, ytdlp_version,
     )
 
     # httpbin proxy IP check (httpx already in project deps)
