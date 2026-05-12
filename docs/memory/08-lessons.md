@@ -36,3 +36,24 @@
 - **Clients/Leads** — если будут B2B-заказчики (Kwork и т.п.).
 **Как реализовать:** Создать Google Sheets в Drive (smolnirovgv@gmail.com), залинковать сюда же в этот файл, наполнить начальной структурой. Параллельно у меня и Cursor должен быть доступ. Возможна интеграция со связкой Apps Script ↔ Supabase для автоматической Metrics-вкладки.
 **Статус:** Отложено. Вспоминать о ней Claude при удобных моментах в работе.
+
+## Bug #19 closure — YouTube ASN blocking
+
+**Date:** 2026-05-12
+
+**Root cause:** YouTube намеренно блокирует datacenter ASN без PO Token (yt-dlp issue #16225, "not planned"). Webshare exit IPs (185.x, 181.x ASN) — datacenter. Cobalt работает потому что другой Railway service с другим IP-пулом + не использует yt-dlp.
+
+**Что пробовали и не сработало:**
+- Cookies refresh — YouTube ротирует серверно за 4-7 дней
+- player_client switch ['tv','android_vr','web_safari'] → ['android','web'] — без эффекта
+- yt-dlp version upgrade — уже самая свежая dev (2026.05.05.233942)
+- TLS fingerprint impersonation — не лечит ASN
+
+**Что не делали и почему:**
+- PO Token plugin — complexity hell (Node.js sidecar + ротация каждые 12ч)
+- Anti-detection stack — maintenance hell для solo founder
+- Browser impersonation — не помогает при ASN-блокировке
+
+**Решение:** см. docs/memory/09-strategic-decisions.md
+
+**Diagnostic logging preserved:** коммит 3c562c5 ([WATCHDOG_YTDLP_PRE/PROXY_IP/POST] + verbose yt_dlp_health). Не удалять — нужно для будущих диагностических сессий.
