@@ -757,7 +757,7 @@ def _download_with_ytdlp(url: str, task_id: str, cookie_path: Optional[str] = No
         logger.warning("[ytdlp] NO proxy configured — YouTube likely to block")
     # Используем клиенты, которые НЕ требуют GVS PO Token для базовых форматов
     ydl_opts["extractor_args"] = {
-        "youtube": {"player_client": ["tv", "android_vr", "web_safari"]}
+        "youtube": {"player_client": ["android", "web"]}
     }
     logger.info("[DOWNLOAD] Using format: %s", ydl_opts.get("format"))
 
@@ -2200,9 +2200,9 @@ async def video_info(url: str):
         except Exception:
             pass
         attempts = [
-            (["tv", "android_vr"], cookie_path),
-            (["web_safari", "tv"], cookie_path),
-            (["tv"], None),
+            (["android"], cookie_path),
+            (["android", "web"], cookie_path),
+            (["web"], None),
         ]
         last_err = None
         for clients, cpath in attempts:

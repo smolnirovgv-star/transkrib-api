@@ -147,7 +147,7 @@ async def _check_yt_dlp(url: str) -> HealthResult:
             'skip_download': True,
             'socket_timeout': 15,
             'extractor_args': {
-                'youtube': {'player_client': ['tv', 'android_vr', 'web_safari']}
+                'youtube': {'player_client': ['android', 'web']}
             },
             'verbose': True,
             'logger': logging.getLogger("yt_dlp_health"),
