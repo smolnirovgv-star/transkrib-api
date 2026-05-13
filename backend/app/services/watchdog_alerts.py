@@ -27,6 +27,13 @@ METHOD_LABELS = {
     "telegram_direct": "Telegram Direct",
 }
 
+# Methods muted from alerts (still tracked in healthcheck and daily digest).
+# yt_dlp: Bug #19 deferred until residential proxy ($10-15/mo, 50% revenue threshold)
+# rapidapi: not in active rotation
+# supadata: not in active rotation
+# cobalt and telegram_direct are NOT muted -- they serve real users.
+MUTED_METHODS = frozenset({"yt_dlp", "rapidapi", "supadata"})
+
 # In-memory fallback — used when Supabase is unavailable
 _alert_state_fallback: dict[str, dict] = {
     method: {"alerted": False, "last_alert_ts": None}
@@ -148,6 +155,9 @@ async def check_and_alert(results: list) -> None:
     """
     for result in results:
         method = result.method
+        if method in MUTED_METHODS:
+            logger.debug("[WATCHDOG] Skip alert for muted method: %s", method)
+            continue  # method is muted, no alert sent (healthcheck data remains)
         label = METHOD_LABELS.get(method, method)
         state = await _load_alert_state(method)
 
