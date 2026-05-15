@@ -1683,9 +1683,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                 logger.error("[bot_tasks] %s: all download methods failed", task_id)
                 if is_youtube:
                     raise Exception(
-                        "Не удалось скачать YouTube-видео. "
-                        "Попробованы: yt-dlp, cobalt, pytubefix. "
-                        "Попробуйте другое видео или пришлите ссылку ещё раз."
+                        "❌ Не удалось обработать видео. Попробуйте отправить другой файл."
                     )
                 if ytdlp_error:
                     raise ytdlp_error
@@ -1850,9 +1848,7 @@ async def run_transcription(task_id: str, url: str, cut_minutes, fmt, language):
                                  task_id, _duration_check)
                     tasks_store[task_id]["status"] = "error"
                     tasks_store[task_id]["error"] = (
-                        "Не удалось определить длительность видео. "
-                        "Это может быть временная блокировка YouTube. "
-                        "Попробуй позже или пришли другую ссылку."
+                        "⚠️ Временная ошибка обработки. Попробуй позже или пришли другое видео."
                     )
                     return
 
