@@ -17,8 +17,8 @@ BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "transkrib_smartcut_bot")
 
 PLAN_INFO = {
     "starter": {"amount": "450.00", "days": 10,   "videos_limit": 9999, "name": "⭐ Базовый"},
-    "pro":     {"amount": "1700.00","days": 30,  "videos_limit": 9999, "name": "🚀 Стандарт"},
-    "annual":  {"amount": "8900.00","days": 365, "videos_limit": 9999, "name": "👑 Про"},
+    "pro":     {"amount": "1500.00","days": 30,  "videos_limit": 9999, "name": "🚀 Стандарт"},
+    "annual":  {"amount": "8900.00","days": 365, "videos_limit": 9999, "name": "👑 Годовой"},
 }
 
 
